@@ -13,7 +13,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter } from 'expo-router';
-import { getPendingRequests, acceptRequest } from '../services/api';
+import { getTeacherRequests, cancelRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface SubstituteRequest {
@@ -27,9 +27,11 @@ interface SubstituteRequest {
   classroom: string;
   notes?: string;
   status: string;
+  accepted_by?: number;
+  acceptor_name?: string;
 }
 
-const ViewRequests = () => {
+const MyRequests = () => {
   const router = useRouter();
   const { user } = useAuth();
   const [requests, setRequests] = useState<SubstituteRequest[]>([]);
@@ -37,14 +39,14 @@ const ViewRequests = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchRequests = useCallback(async () => {
+    if (!user?.id) return;
+    
     try {
-      const data = await getPendingRequests();
-      // Filter out user's own requests
-      const filteredRequests = data.filter((req: SubstituteRequest) => req.teacher_id !== user?.id);
-      setRequests(filteredRequests);
+      const data = await getTeacherRequests(user.id);
+      setRequests(data);
     } catch (error) {
       console.error('Error fetching requests:', error);
-      Alert.alert('Error', 'Failed to fetch requests');
+      Alert.alert('Error', 'Failed to fetch your requests');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -60,26 +62,27 @@ const ViewRequests = () => {
     fetchRequests();
   };
 
-  const handleAcceptRequest = (id: number) => {
+  const handleCancelRequest = (id: number) => {
     if (!user) {
       Alert.alert('Error', 'You must be logged in');
       return;
     }
 
     Alert.alert(
-      'Accept Request',
-      'Are you sure you want to accept this substitute request?',
+      'Cancel Request',
+      'Are you sure you want to cancel this substitute request?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'No', style: 'cancel' },
         {
-          text: 'Accept',
+          text: 'Yes, Cancel',
+          style: 'destructive',
           onPress: async () => {
             try {
-              await acceptRequest(id, user.id);
-              Alert.alert('Success', 'Request accepted successfully!');
+              await cancelRequest(id, user.id);
+              Alert.alert('Success', 'Request cancelled successfully!');
               setRequests(requests.filter(req => req.id !== id));
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to accept request');
+              Alert.alert('Error', error.message || 'Failed to cancel request');
             }
           },
         },
@@ -96,6 +99,24 @@ const ViewRequests = () => {
     return dateStr;
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return '#FF9800';
+      case 'accepted': return '#4CAF50';
+      case 'cancelled': return '#F44336';
+      default: return '#666';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return '⏳';
+      case 'accepted': return '✅';
+      case 'cancelled': return '❌';
+      default: return '❓';
+    }
+  };
+
   const renderRequestCard = ({ item }: { item: SubstituteRequest }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -103,8 +124,11 @@ const ViewRequests = () => {
           <Text style={styles.subjectIcon}>📚</Text>
           <Text style={styles.subject}>{item.subject}</Text>
         </View>
-        <View style={styles.teacherBadge}>
-          <Text style={styles.teacherName}>{item.teacher_name}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
+          <Text style={styles.statusIcon}>{getStatusIcon(item.status)}</Text>
+          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+          </Text>
         </View>
       </View>
 
@@ -145,6 +169,13 @@ const ViewRequests = () => {
           </View>
         </View>
 
+        {item.acceptor_name && (
+          <View style={styles.acceptorSection}>
+            <Text style={styles.acceptorLabel}>👤 Accepted by:</Text>
+            <Text style={styles.acceptorName}>{item.acceptor_name}</Text>
+          </View>
+        )}
+
         {item.notes && (
           <View style={styles.notesSection}>
             <Text style={styles.notesLabel}>📝 Notes:</Text>
@@ -153,13 +184,15 @@ const ViewRequests = () => {
         )}
       </View>
 
-      <TouchableOpacity 
-        style={styles.acceptButton}
-        onPress={() => handleAcceptRequest(item.id)}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.acceptButtonText}>✓ Accept Request</Text>
-      </TouchableOpacity>
+      {item.status === 'pending' && (
+        <TouchableOpacity 
+          style={styles.cancelButton}
+          onPress={() => handleCancelRequest(item.id)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.cancelButtonText}>Cancel Request</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -167,7 +200,7 @@ const ViewRequests = () => {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2E5BFF" />
-        <Text style={styles.loadingText}>Loading requests...</Text>
+        <Text style={styles.loadingText}>Loading your requests...</Text>
       </SafeAreaView>
     );
   }
@@ -186,9 +219,9 @@ const ViewRequests = () => {
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Available Requests</Text>
+          <Text style={styles.headerTitle}>My Requests</Text>
           <Text style={styles.headerSubtitle}>
-            {requests.length} request{requests.length !== 1 ? 's' : ''} available
+            {requests.length} request{requests.length !== 1 ? 's' : ''} created
           </Text>
         </View>
         <View style={styles.headerSpacer} />
@@ -210,9 +243,9 @@ const ViewRequests = () => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>📭</Text>
-            <Text style={styles.emptyTitle}>No Requests Available</Text>
+            <Text style={styles.emptyTitle}>No Requests Yet</Text>
             <Text style={styles.emptyText}>
-              There are no substitute requests at the moment. Pull down to refresh.
+              You haven't created any substitute requests. Tap "Request Substitute" on the home screen to create one.
             </Text>
           </View>
         }
@@ -313,17 +346,21 @@ const styles = StyleSheet.create({
     color: '#1A1A2E',
     flex: 1,
   },
-  teacherBadge: {
-    backgroundColor: '#E8F4FD',
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     marginLeft: 8,
   },
-  teacherName: {
+  statusIcon: {
     fontSize: 14,
-    color: '#2E5BFF',
-    fontWeight: '500',
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   cardBody: {
     marginBottom: 16,
@@ -351,6 +388,24 @@ const styles = StyleSheet.create({
     color: '#1A1A2E',
     fontWeight: '500',
   },
+  acceptorSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#E8ECF0',
+  },
+  acceptorLabel: {
+    fontSize: 15,
+    color: '#666',
+    marginRight: 8,
+  },
+  acceptorName: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
   notesSection: {
     marginTop: 12,
     paddingTop: 14,
@@ -368,20 +423,17 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 22,
   },
-  acceptButton: {
-    backgroundColor: '#00C853',
-    padding: 18,
+  cancelButton: {
+    backgroundColor: '#FFEBEE',
+    padding: 16,
     borderRadius: 14,
     alignItems: 'center',
-    shadowColor: '#00C853',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
   },
-  acceptButtonText: {
-    color: '#fff',
-    fontSize: 18,
+  cancelButtonText: {
+    color: '#E53935',
+    fontSize: 17,
     fontWeight: '600',
   },
   // Empty State
@@ -407,4 +459,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ViewRequests;
+export default MyRequests;
