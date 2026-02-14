@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from typing import List
 
 from database import get_supabase
-from models import UserResponse, UserUpdate
+from models import UserResponse, UserUpdate, PushTokenUpdate
 
 router = APIRouter()
 
@@ -143,6 +143,50 @@ async def update_user(user_id: int, user_update: UserUpdate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update user: {str(e)}"
+        )
+
+
+@router.put("/{user_id}/push-token")
+async def update_push_token(user_id: int, token_update: PushTokenUpdate):
+    """
+    Update the push notification token for a user.
+    Called from mobile app when registering for push notifications.
+    """
+    supabase = get_supabase()
+    
+    try:
+        # Check if user exists
+        check_result = supabase.table("users")\
+            .select("id")\
+            .eq("id", user_id)\
+            .execute()
+        
+        if not check_result.data or len(check_result.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update push token
+        result = supabase.table("users")\
+            .update({"push_token": token_update.push_token})\
+            .eq("id", user_id)\
+            .execute()
+        
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update push token"
+            )
+        
+        return {"message": "Push token updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update push token: {str(e)}"
         )
 
 

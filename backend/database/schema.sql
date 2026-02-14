@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
     department VARCHAR(100),
     phone VARCHAR(20),
     email_verified BOOLEAN DEFAULT FALSE,
+    push_token VARCHAR(255),  -- Expo push notification token
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
@@ -61,6 +62,12 @@ BEGIN
         ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE;
     END IF;
     
+    -- Add push_token column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'push_token') THEN
+        ALTER TABLE users ADD COLUMN push_token VARCHAR(255);
+    END IF;
+    
     -- Make password column nullable (Supabase Auth handles passwords now)
     ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
 EXCEPTION
@@ -75,6 +82,7 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_users_auth_id ON users(auth_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_push_token ON users(push_token);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON substitute_requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_teacher ON substitute_requests(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_requests_date ON substitute_requests(date);

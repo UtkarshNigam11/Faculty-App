@@ -54,6 +54,11 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
 
 
+# Push token update
+class PushTokenUpdate(BaseModel):
+    push_token: str
+
+
 # Signup response
 class SignupResponse(BaseModel):
     message: str
