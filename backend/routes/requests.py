@@ -9,6 +9,7 @@ from models import (
     AcceptRequest,
     CancelRequest
 )
+from services.push_notifications import notify_all_faculty_except, notify_user
 
 router = APIRouter()
 
@@ -196,6 +197,19 @@ async def create_request(request: SubstituteRequestCreate):
             )
         
         req = result.data[0]
+        
+        # Send push notification to all other faculty
+        await notify_all_faculty_except(
+            exclude_user_id=request.teacher_id,
+            title="📚 New Substitute Request",
+            body=f"{teacher_name} needs a substitute for {request.subject} on {request.date} at {request.time}",
+            data={
+                "type": "new_request",
+                "request_id": req["id"],
+                "subject": request.subject,
+            }
+        )
+        
         return SubstituteRequestResponse(
             id=req["id"],
             teacher_id=req["teacher_id"],
@@ -260,6 +274,7 @@ async def accept_request(request_id: int, accept_data: AcceptRequest):
             )
         
         acceptor_name = acceptor_result.data[0]["name"]
+        original_request = check_result.data[0]
         
         # Accept the request
         result = supabase.table("substitute_requests")\
@@ -278,6 +293,18 @@ async def accept_request(request_id: int, accept_data: AcceptRequest):
             )
         
         req = result.data[0]
+        
+        # Notify the original requester that their request was accepted
+        await notify_user(
+            user_id=original_request["teacher_id"],
+            title="✅ Request Accepted!",
+            body=f"{acceptor_name} will cover your {req['subject']} class on {req['date']} at {req['time']}",
+            data={
+                "type": "request_accepted",
+                "request_id": request_id,
+            }
+        )
+        
         return SubstituteRequestResponse(
             id=req["id"],
             teacher_id=req["teacher_id"],
@@ -324,6 +351,8 @@ async def cancel_request(request_id: int, cancel_data: CancelRequest):
                 detail="Request not found or unauthorized"
             )
         
+        original_request = check_result.data[0]
+        
         # Cancel the request
         result = supabase.table("substitute_requests")\
             .update({
@@ -340,6 +369,19 @@ async def cancel_request(request_id: int, cancel_data: CancelRequest):
             )
         
         req = result.data[0]
+        
+        # If request was accepted by someone, notify them about cancellation
+        if original_request.get("accepted_by"):
+            await notify_user(
+                user_id=original_request["accepted_by"],
+                title="❌ Request Cancelled",
+                body=f"The substitute request for {req['subject']} on {req['date']} has been cancelled",
+                data={
+                    "type": "request_cancelled",
+                    "request_id": request_id,
+                }
+            )
+        
         return SubstituteRequestResponse(
             id=req["id"],
             teacher_id=req["teacher_id"],
