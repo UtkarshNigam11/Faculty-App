@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { updatePushToken } from '../services/api';
 
 interface User {
   id: number;
@@ -14,6 +16,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (user: User, token?: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserData: (userData: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,20 +57,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setUser(userData);
       console.log('AuthContext: User state updated');
+      
+      // Register for push notifications after login
+      registerForPushNotifications(userData.id);
     } catch (error) {
       console.error('AuthContext: Error saving user:', error);
       throw error;
     }
   };
 
+  const registerForPushNotifications = async (userId: number) => {
+    // Skip on web platform
+    if (Platform.OS === 'web') {
+      console.log('AuthContext: Push notifications not supported on web');
+      return;
+    }
+    
+    try {
+      // Initialize notifications first
+      const notifications = await import('../services/notifications');
+      await notifications.initializeNotifications();
+      
+      console.log('AuthContext: Registering for push notifications...');
+      const pushToken = await notifications.registerForPushNotificationsAsync();
+      
+      if (pushToken) {
+        console.log('AuthContext: Got push token, saving to backend...');
+        await updatePushToken(userId, pushToken);
+        await AsyncStorage.setItem('pushToken', pushToken);
+        console.log('AuthContext: Push token saved successfully');
+      }
+    } catch (error) {
+      // Don't fail login if push notification registration fails
+      console.error('AuthContext: Push notification registration failed:', error);
+    }
+  };
+
+  const updateUserData = async (userData: Partial<User>) => {
+    if (!user) return;
+    
+    const updatedUser = { ...user, ...userData };
+    setUser(updatedUser);
+    await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   const logout = async () => {
     setUser(null);
     await AsyncStorage.removeItem('user');
     await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('pushToken');
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUserData }}>
       {children}
     </AuthContext.Provider>
   );

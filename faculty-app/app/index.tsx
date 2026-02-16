@@ -10,6 +10,7 @@ import {
   StatusBar,
   ScrollView,
   Platform,
+  Alert,
 } from "react-native";
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
@@ -61,7 +62,7 @@ const HomeScreen = () => {
 
   const handleAccount = () => {
     setMenuVisible(false);
-    // TODO: Navigate to account page
+    router.push('/account');
   };
 
   // Get initials for avatar

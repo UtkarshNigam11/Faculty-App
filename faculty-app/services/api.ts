@@ -1,14 +1,13 @@
 import { Platform } from 'react-native';
 
-// IMPORTANT: For mobile devices, replace this IP with your computer's local IP
-// Run 'ipconfig' on Windows or 'ifconfig' on Mac/Linux to find it
-// Your current IPs: 172.16.0.2 or 10.5.85.207
-const LOCAL_IP = '10.5.85.207'; // Change this to your computer's IP if needed
+// Production API URL (deployed on Render)
+const API_BASE_URL = 'https://facultyapp-api.onrender.com/api';
 
-// Use localhost for web, IP address for mobile devices
-const API_BASE_URL = Platform.OS === 'web' 
-  ? 'http://localhost:8000/api'
-  : `http://${LOCAL_IP}:8000/api`;
+// For local development, uncomment below and comment above:
+// const LOCAL_IP = '10.5.85.207';
+// const API_BASE_URL = Platform.OS === 'web' 
+//   ? 'http://localhost:8000/api'
+//   : `http://${LOCAL_IP}:8000/api`;
 
 console.log('API URL:', API_BASE_URL); // Debug log
 
@@ -159,6 +158,42 @@ export const getUser = async (userId: number) => {
   
   if (!response.ok) {
     throw new Error('Failed to fetch user');
+  }
+  
+  return response.json();
+};
+
+// Update user's push notification token
+export const updatePushToken = async (userId: number, pushToken: string) => {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/push-token/`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ push_token: pushToken }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update push token');
+  }
+  
+  return response.json();
+};
+
+// Update user profile
+export const updateUser = async (userId: number, data: {
+  name?: string;
+  department?: string;
+  phone?: string;
+}) => {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update user');
   }
   
   return response.json();
