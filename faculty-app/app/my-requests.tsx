@@ -1,76 +1,69 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Text, 
-  View, 
-  StyleSheet, 
+import {
+  Text,
+  View,
+  StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
   RefreshControl,
   ActivityIndicator,
+  Alert,
   SafeAreaView,
   StatusBar,
-  Platform,
-} from "react-native";
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getTeacherRequests, cancelRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-interface SubstituteRequest {
-  id: number;
-  teacher_id: number;
-  teacher_name: string;
+type Request = {
+  id: string;
   subject: string;
   date: string;
   time: string;
   duration: number;
   classroom: string;
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
   notes?: string;
-  status: string;
-  accepted_by?: number;
-  acceptor_name?: string;
-}
+  substitute_name?: string;
+};
 
-const MyRequests = () => {
+type FilterTab = 'all' | 'pending' | 'accepted' | 'cancelled';
+
+const MyRequestsScreen = () => {
   const router = useRouter();
   const { user } = useAuth();
-  const [requests, setRequests] = useState<SubstituteRequest[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
 
-  const fetchRequests = useCallback(async () => {
-    if (!user?.id) return;
-    
+  const fetchRequests = async () => {
+    if (!user) return;
     try {
       const data = await getTeacherRequests(user.id);
       setRequests(data);
     } catch (error) {
       console.error('Error fetching requests:', error);
-      Alert.alert('Error', 'Failed to fetch your requests');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  };
 
   useEffect(() => {
     fetchRequests();
-  }, [fetchRequests]);
+  }, [user]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchRequests();
-  };
+  }, [user]);
 
-  const handleCancelRequest = (id: number) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in');
-      return;
-    }
-
+  const handleCancel = (requestId: string) => {
     Alert.alert(
       'Cancel Request',
-      'Are you sure you want to cancel this substitute request?',
+      'Are you sure you want to cancel this request?',
       [
         { text: 'No', style: 'cancel' },
         {
@@ -78,9 +71,9 @@ const MyRequests = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await cancelRequest(id, user.id);
-              Alert.alert('Success', 'Request cancelled successfully!');
-              setRequests(requests.filter(req => req.id !== id));
+              await cancelRequest(Number(requestId), user!.id);
+              fetchRequests();
+              Alert.alert('Success', 'Request cancelled successfully');
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to cancel request');
             }
@@ -90,124 +83,117 @@ const MyRequests = () => {
     );
   };
 
-  // Format date from YYYY-MM-DD to DD/MM/YYYY for display
+  const filteredRequests = requests.filter((req) => {
+    if (activeFilter === 'all') return true;
+    return req.status === activeFilter;
+  });
+
   const formatDate = (dateStr: string) => {
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return dateStr;
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'pending': return '#FF9800';
-      case 'accepted': return '#4CAF50';
-      case 'cancelled': return '#F44336';
-      default: return '#666';
+      case 'pending':
+        return { bg: '#FEF3C7', text: '#D97706', label: 'Pending' };
+      case 'accepted':
+        return { bg: '#D1FAE5', text: '#059669', label: 'Accepted' };
+      case 'completed':
+        return { bg: '#DBEAFE', text: '#2563EB', label: 'Completed' };
+      case 'cancelled':
+        return { bg: '#F3F4F6', text: '#6B7280', label: 'Cancelled' };
+      default:
+        return { bg: '#F3F4F6', text: '#6B7280', label: status };
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return '⏳';
-      case 'accepted': return '✅';
-      case 'cancelled': return '❌';
-      default: return '❓';
-    }
-  };
+  const renderRequestCard = ({ item }: { item: Request }) => {
+    const statusStyle = getStatusStyle(item.status);
 
-  const renderRequestCard = ({ item }: { item: SubstituteRequest }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.subjectContainer}>
-          <Text style={styles.subjectIcon}>📚</Text>
-          <Text style={styles.subject}>{item.subject}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-          <Text style={styles.statusIcon}>{getStatusIcon(item.status)}</Text>
-          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.cardBody}>
-        <View style={styles.detailRow}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>📅</Text>
-            <View>
-              <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{formatDate(item.date)}</Text>
-            </View>
+    return (
+      <View style={styles.requestCard}>
+        {/* Status Badge */}
+        <View style={styles.cardHeader}>
+          <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusStyle.text }]} />
+            <Text style={[styles.statusText, { color: statusStyle.text }]}>
+              {statusStyle.label}
+            </Text>
           </View>
+          <Text style={styles.dateText}>{formatDate(item.date)}</Text>
+        </View>
 
+        {/* Subject */}
+        <Text style={styles.subjectText}>{item.subject}</Text>
+
+        {/* Details */}
+        <View style={styles.detailsRow}>
           <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>🕐</Text>
-            <View>
-              <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{item.time}</Text>
-            </View>
+            <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+            <Text style={styles.detailLabel}>Date</Text>
+            <Text style={styles.detailText}>{formatDate(item.date)}</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Ionicons name="time-outline" size={14} color="#6B7280" />
+            <Text style={styles.detailLabel}>Time</Text>
+            <Text style={styles.detailText}>{item.time}</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Ionicons name="location-outline" size={14} color="#6B7280" />
+            <Text style={styles.detailLabel}>Room</Text>
+            <Text style={styles.detailText}>{item.classroom}</Text>
           </View>
         </View>
 
-        <View style={styles.detailRow}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>⏱️</Text>
-            <View>
-              <Text style={styles.detailLabel}>Duration</Text>
-              <Text style={styles.detailValue}>{item.duration} min</Text>
+        {/* Substitute Info (if accepted) */}
+        {item.status === 'accepted' && item.substitute_name && (
+          <View style={styles.substituteInfo}>
+            <View style={styles.substituteAvatar}>
+              <Text style={styles.substituteAvatarText}>
+                {item.substitute_name[0].toUpperCase()}
+              </Text>
             </View>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>🏫</Text>
             <View>
-              <Text style={styles.detailLabel}>Classroom</Text>
-              <Text style={styles.detailValue}>{item.classroom}</Text>
+              <Text style={styles.substituteLabel}>Substituted by</Text>
+              <Text style={styles.substituteName}>{item.substitute_name}</Text>
             </View>
-          </View>
-        </View>
-
-        {item.acceptor_name && (
-          <View style={styles.acceptorSection}>
-            <Text style={styles.acceptorLabel}>👤 Accepted by:</Text>
-            <Text style={styles.acceptorName}>{item.acceptor_name}</Text>
           </View>
         )}
 
-        {item.notes && (
-          <View style={styles.notesSection}>
-            <Text style={styles.notesLabel}>📝 Notes:</Text>
-            <Text style={styles.notesText}>{item.notes}</Text>
-          </View>
+        {/* Cancel Button (only for pending) */}
+        {item.status === 'pending' && (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => handleCancel(item.id)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
+            <Text style={styles.cancelButtonText}>Cancel Request</Text>
+          </TouchableOpacity>
         )}
       </View>
-
-      {item.status === 'pending' && (
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => handleCancelRequest(item.id)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.cancelButtonText}>Cancel Request</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+    );
+  };
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2E5BFF" />
-        <Text style={styles.loadingText}>Loading your requests...</Text>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10B981" />
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#2E5BFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -216,41 +202,75 @@ const MyRequests = () => {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Ionicons name="chevron-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>My Requests</Text>
-          <Text style={styles.headerSubtitle}>
-            {requests.length} request{requests.length !== 1 ? 's' : ''} created
-          </Text>
-        </View>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>My Requests</Text>
+        <View style={styles.placeholder} />
       </View>
 
+      <View style={styles.divider} />
+
+      {/* Filter Tabs */}
+      <View style={styles.filterContainer}>
+        {(['all', 'pending', 'accepted', 'cancelled'] as FilterTab[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.filterTab,
+              activeFilter === tab && styles.filterTabActive
+            ]}
+            onPress={() => setActiveFilter(tab)}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.filterTabText,
+              activeFilter === tab && styles.filterTabTextActive
+            ]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Request List */}
       <FlatList
-        data={requests}
+        data={filteredRequests}
+        keyExtractor={(item) => item.id}
         renderItem={renderRequestCard}
-        keyExtractor={item => item.id.toString()}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#2E5BFF']}
-            tintColor="#2E5BFF"
+            colors={['#10B981']}
+            tintColor="#10B981"
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📭</Text>
-            <Text style={styles.emptyTitle}>No Requests Yet</Text>
+            <View style={styles.emptyIcon}>
+              <Text style={styles.emptyIconText}>0</Text>
+            </View>
+            <Text style={styles.emptyTitle}>No Requests Found</Text>
             <Text style={styles.emptyText}>
-              You haven't created any substitute requests. Tap "Request Substitute" on the home screen to create one.
+              {activeFilter === 'all' 
+                ? "You haven't made any substitute requests yet."
+                : `No ${activeFilter} requests.`}
             </Text>
           </View>
         }
-        showsVerticalScrollIndicator={false}
       />
+
+      {/* Floating Action Button */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/request-substitute')}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.fabIcon}>+</Text>
+        <Text style={styles.fabText}>New Request</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 };
@@ -258,205 +278,236 @@ const MyRequests = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F9FAFB',
+    paddingTop: 20,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F7FA',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 18,
-    color: '#666',
-  },
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 40 : 16,
-    paddingBottom: 16,
-    backgroundColor: '#2E5BFF',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 17,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  headerCenter: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
   },
+  backIcon: {
+    fontSize: 32,
+    color: '#374151',
+    fontWeight: '300',
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
   },
-  headerSubtitle: {
+  placeholder: {
+    width: 40,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  filterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
+  },
+  filterTabActive: {
+    backgroundColor: '#10B981',
+  },
+  filterTabText: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 2,
+    fontWeight: '600',
+    color: '#6B7280',
   },
-  headerSpacer: {
-    width: 60,
+  filterTabTextActive: {
+    color: '#FFFFFF',
   },
-  // List
-  listContainer: {
-    padding: 20,
-    paddingBottom: 40,
+  listContent: {
+    padding: 16,
+    paddingBottom: 100,
   },
-  // Card
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 6,
+  requestCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8ECF0',
-  },
-  subjectContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  subjectIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  subject: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1A1A2E',
-    flex: 1,
+    marginBottom: 12,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginLeft: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
   },
-  statusIcon: {
-    fontSize: 14,
-    marginRight: 6,
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
-  cardBody: {
-    marginBottom: 16,
+  dateText: {
+    fontSize: 13,
+    color: '#6B7280',
   },
-  detailRow: {
+  subjectText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  detailsRow: {
     flexDirection: 'row',
-    marginBottom: 14,
+    flexWrap: 'wrap',
+    gap: 16,
   },
   detailItem: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-  },
-  detailIcon: {
-    fontSize: 20,
-    marginRight: 10,
   },
   detailLabel: {
-    fontSize: 13,
-    color: '#666',
+    fontSize: 11,
+    color: '#9CA3AF',
     marginBottom: 2,
   },
-  detailValue: {
-    fontSize: 16,
-    color: '#1A1A2E',
-    fontWeight: '500',
+  detailText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
   },
-  acceptorSection: {
+  substituteInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#E8ECF0',
-  },
-  acceptorLabel: {
-    fontSize: 15,
-    color: '#666',
-    marginRight: 8,
-  },
-  acceptorName: {
-    fontSize: 16,
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  notesSection: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 12,
     marginTop: 12,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#E8ECF0',
+    gap: 12,
   },
-  notesLabel: {
+  substituteAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#D1FAE5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  substituteAvatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  substituteLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  substituteName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
-  },
-  notesText: {
-    fontSize: 15,
-    color: '#666',
-    lineHeight: 22,
+    color: '#059669',
   },
   cancelButton: {
-    backgroundColor: '#FFEBEE',
-    padding: 16,
-    borderRadius: 14,
-    alignItems: 'center',
+    marginTop: 16,
     borderWidth: 1,
-    borderColor: '#FFCDD2',
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    height: 44,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#E53935',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
+    color: '#DC2626',
   },
-  // Empty State
   emptyContainer: {
-    padding: 40,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
   },
   emptyIcon: {
-    fontSize: 64,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
   },
+  emptyIconText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#9CA3AF',
+  },
   emptyTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#1A1A2E',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 8,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
+    color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 24,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 28,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    gap: 8,
+  },
+  fabIcon: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  fabText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 
-export default MyRequests;
+export default MyRequestsScreen;

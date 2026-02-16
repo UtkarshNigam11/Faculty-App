@@ -1,83 +1,165 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Text, 
-  View, 
-  StyleSheet, 
+import {
+  Text,
+  View,
+  StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
   RefreshControl,
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
-  Platform,
-} from "react-native";
+  TextInput,
+  Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getPendingRequests, acceptRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-interface SubstituteRequest {
+type Request = {
   id: number;
   teacher_id: number;
-  teacher_name: string;
+  teacher_name?: string;
   subject: string;
   date: string;
   time: string;
   duration: number;
   classroom: string;
-  notes?: string;
   status: string;
-}
+  notes?: string;
+};
 
-const ViewRequests = () => {
+type FilterTab = 'all' | 'today' | 'tomorrow' | 'urgent';
+
+const ViewRequestsScreen = () => {
   const router = useRouter();
   const { user } = useAuth();
-  const [requests, setRequests] = useState<SubstituteRequest[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = async () => {
     try {
       const data = await getPendingRequests();
-      // Filter out user's own requests
-      const filteredRequests = data.filter((req: SubstituteRequest) => req.teacher_id !== user?.id);
-      setRequests(filteredRequests);
+      // Filter out user's own requests (already returns only pending)
+      const otherRequests = data.filter(
+        (req: Request) => req.teacher_id !== user?.id
+      );
+      setRequests(otherRequests);
     } catch (error) {
       console.error('Error fetching requests:', error);
-      Alert.alert('Error', 'Failed to fetch requests');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  };
 
   useEffect(() => {
     fetchRequests();
-  }, [fetchRequests]);
+  }, []);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchRequests();
+  }, []);
+
+  const isToday = (dateStr: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    return dateStr === today;
   };
 
-  const handleAcceptRequest = (id: number) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in');
-      return;
+  const isTomorrow = (dateStr: string) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return dateStr === tomorrow.toISOString().split('T')[0];
+  };
+
+  const filteredRequests = requests.filter(req => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        req.subject.toLowerCase().includes(query) ||
+        req.classroom.toLowerCase().includes(query) ||
+        req.teacher_name?.toLowerCase().includes(query);
+      if (!matchesSearch) return false;
     }
 
+    // Tab filter
+    switch (activeFilter) {
+      case 'today':
+        return isToday(req.date);
+      case 'tomorrow':
+        return isTomorrow(req.date);
+      case 'urgent':
+        // Urgent = within next 4 hours
+        if (!isToday(req.date)) return false;
+        try {
+          const now = new Date();
+          const timeParts = req.time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+          if (!timeParts) return false;
+          let hours = parseInt(timeParts[1]);
+          const minutes = parseInt(timeParts[2]);
+          const period = timeParts[3];
+          if (period) {
+            if (period.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+            if (period.toUpperCase() === 'AM' && hours === 12) hours = 0;
+          }
+          const classTime = new Date();
+          classTime.setHours(hours, minutes, 0, 0);
+          const hoursUntil = (classTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+          return hoursUntil > 0 && hoursUntil <= 4;
+        } catch {
+          return false;
+        }
+      default:
+        return true;
+    }
+  });
+
+  // Group by date
+  const groupedRequests = filteredRequests.reduce((acc, req) => {
+    let label = formatDateLabel(req.date);
+    if (!acc[label]) acc[label] = [];
+    acc[label].push(req);
+    return acc;
+  }, {} as Record<string, Request[]>);
+
+  function formatDateLabel(dateStr: string) {
+    if (isToday(dateStr)) return 'TODAY';
+    if (isTomorrow(dateStr)) return 'TOMORROW';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      month: 'short', 
+      day: 'numeric' 
+    }).toUpperCase();
+  }
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const handleAccept = (requestId: number, subject: string) => {
     Alert.alert(
       'Accept Request',
-      'Are you sure you want to accept this substitute request?',
+      `Are you sure you want to substitute for "${subject}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Accept',
           onPress: async () => {
             try {
-              await acceptRequest(id, user.id);
-              Alert.alert('Success', 'Request accepted successfully!');
-              setRequests(requests.filter(req => req.id !== id));
+              await acceptRequest(requestId, user!.id);
+              Alert.alert('Success', 'You have accepted this substitute request!');
+              fetchRequests(); // Refresh the list
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to accept request');
             }
@@ -87,94 +169,84 @@ const ViewRequests = () => {
     );
   };
 
-  // Format date from YYYY-MM-DD to DD/MM/YYYY for display
-  const formatDate = (dateStr: string) => {
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return dateStr;
-  };
-
-  const renderRequestCard = ({ item }: { item: SubstituteRequest }) => (
-    <View style={styles.card}>
+  const renderRequestCard = ({ item }: { item: Request }) => (
+    <View style={styles.requestCard}>
       <View style={styles.cardHeader}>
-        <View style={styles.subjectContainer}>
-          <Text style={styles.subjectIcon}>📚</Text>
-          <Text style={styles.subject}>{item.subject}</Text>
+        <View style={styles.teacherInfo}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {(item.teacher_name || 'F')[0].toUpperCase()}
+            </Text>
+          </View>
+          <View>
+            <Text style={styles.teacherName}>
+              {item.teacher_name || 'Faculty Member'}
+            </Text>
+            <Text style={styles.department}>Faculty</Text>
+          </View>
         </View>
-        <View style={styles.teacherBadge}>
-          <Text style={styles.teacherName}>{item.teacher_name}</Text>
+        <View style={styles.urgentBadge}>
+          <Text style={styles.urgentText}>
+            {isToday(item.date) ? 'Today' : formatDate(item.date)}
+          </Text>
         </View>
       </View>
 
       <View style={styles.cardBody}>
         <View style={styles.detailRow}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>📅</Text>
-            <View>
-              <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{formatDate(item.date)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>🕐</Text>
-            <View>
-              <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{item.time}</Text>
-            </View>
-          </View>
+          <Text style={styles.subjectText}>{item.subject}</Text>
         </View>
 
-        <View style={styles.detailRow}>
+        <View style={styles.detailsGrid}>
           <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>⏱️</Text>
-            <View>
-              <Text style={styles.detailLabel}>Duration</Text>
-              <Text style={styles.detailValue}>{item.duration} min</Text>
-            </View>
+            <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+            <Text style={styles.detailLabel}>Date</Text>
+            <Text style={styles.detailValue}>{formatDate(item.date)}</Text>
           </View>
-
           <View style={styles.detailItem}>
-            <Text style={styles.detailIcon}>🏫</Text>
-            <View>
-              <Text style={styles.detailLabel}>Classroom</Text>
-              <Text style={styles.detailValue}>{item.classroom}</Text>
-            </View>
+            <Ionicons name="time-outline" size={14} color="#6B7280" />
+            <Text style={styles.detailLabel}>Time</Text>
+            <Text style={styles.detailValue}>{item.time}</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Ionicons name="location-outline" size={14} color="#6B7280" />
+            <Text style={styles.detailLabel}>Room</Text>
+            <Text style={styles.detailValue}>{item.classroom}</Text>
           </View>
         </View>
-
-        {item.notes && (
-          <View style={styles.notesSection}>
-            <Text style={styles.notesLabel}>📝 Notes:</Text>
-            <Text style={styles.notesText}>{item.notes}</Text>
-          </View>
-        )}
       </View>
 
       <TouchableOpacity 
         style={styles.acceptButton}
-        onPress={() => handleAcceptRequest(item.id)}
-        activeOpacity={0.85}
+        onPress={() => handleAccept(item.id, item.subject)}
+        activeOpacity={0.8}
       >
-        <Text style={styles.acceptButtonText}>✓ Accept Request</Text>
+        <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+        <Text style={styles.acceptButtonText}>Accept Request</Text>
       </TouchableOpacity>
+    </View>
+  );
+
+  const renderSectionHeader = (title: string) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
     </View>
   );
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2E5BFF" />
-        <Text style={styles.loadingText}>Loading requests...</Text>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10B981" />
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#2E5BFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -183,40 +255,92 @@ const ViewRequests = () => {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Ionicons name="chevron-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Available Requests</Text>
-          <Text style={styles.headerSubtitle}>
-            {requests.length} request{requests.length !== 1 ? 's' : ''} available
-          </Text>
-        </View>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Available Requests</Text>
+        <View style={styles.placeholder} />
       </View>
 
+      <View style={styles.divider} />
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 10 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by subject, room, faculty..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Filter Tabs */}
+      <View style={styles.filterContainer}>
+        {(['all', 'today', 'tomorrow', 'urgent'] as FilterTab[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.filterTab,
+              activeFilter === tab && styles.filterTabActive
+            ]}
+            onPress={() => setActiveFilter(tab)}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.filterTabText,
+              activeFilter === tab && styles.filterTabTextActive
+            ]}>
+              {tab === 'all' ? 'All Requests' : 
+               tab === 'today' ? 'Today' :
+               tab === 'tomorrow' ? 'Tomorrow' : 'Urgent'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Request List */}
       <FlatList
-        data={requests}
-        renderItem={renderRequestCard}
-        keyExtractor={item => item.id.toString()}
-        contentContainerStyle={styles.listContainer}
+        data={Object.keys(groupedRequests)}
+        keyExtractor={(item) => item}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#2E5BFF']}
-            tintColor="#2E5BFF"
+            colors={['#10B981']}
+            tintColor="#10B981"
           />
         }
+        renderItem={({ item: dateLabel }) => (
+          <View>
+            {renderSectionHeader(dateLabel)}
+            {groupedRequests[dateLabel].map((request) => (
+              <View key={request.id}>
+                {renderRequestCard({ item: request })}
+              </View>
+            ))}
+          </View>
+        )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📭</Text>
+            <View style={styles.emptyIcon}>
+              <Text style={styles.emptyIconText}>0</Text>
+            </View>
             <Text style={styles.emptyTitle}>No Requests Available</Text>
             <Text style={styles.emptyText}>
-              There are no substitute requests at the moment. Pull down to refresh.
+              There are no substitute requests at the moment.
             </Text>
           </View>
         }
-        showsVerticalScrollIndicator={false}
       />
     </SafeAreaView>
   );
@@ -225,186 +349,244 @@ const ViewRequests = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F9FAFB',
+    paddingTop: 20,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F7FA',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 18,
-    color: '#666',
-  },
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 40 : 16,
-    paddingBottom: 16,
-    backgroundColor: '#2E5BFF',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 17,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  headerCenter: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
   },
+  backIcon: {
+    fontSize: 32,
+    color: '#374151',
+    fontWeight: '300',
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 2,
+  placeholder: {
+    width: 40,
   },
-  headerSpacer: {
-    width: 60,
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
   },
-  // List
-  listContainer: {
-    padding: 20,
-    paddingBottom: 40,
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
   },
-  // Card
-  card: {
-    backgroundColor: '#fff',
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+  },
+  searchIcon: {
+    fontSize: 18,
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  clearIcon: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    padding: 4,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  filterTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 6,
+    backgroundColor: '#F3F4F6',
+  },
+  filterTabActive: {
+    backgroundColor: '#10B981',
+  },
+  filterTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  filterTabTextActive: {
+    color: '#FFFFFF',
+  },
+  listContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  sectionHeader: {
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#10B981',
+    letterSpacing: 1,
+  },
+  requestCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8ECF0',
   },
-  subjectContainer: {
+  teacherInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
   },
-  subjectIcon: {
-    fontSize: 24,
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E0F2FE',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
-  subject: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1A1A2E',
-    flex: 1,
-  },
-  teacherBadge: {
-    backgroundColor: '#E8F4FD',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginLeft: 8,
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0EA5E9',
   },
   teacherName: {
-    fontSize: 14,
-    color: '#2E5BFF',
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  department: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  urgentBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  urgentText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D97706',
   },
   cardBody: {
     marginBottom: 16,
   },
   detailRow: {
     flexDirection: 'row',
-    marginBottom: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  detailIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  subjectText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  detailsGrid: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
   },
   detailItem: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-  },
-  detailIcon: {
-    fontSize: 20,
-    marginRight: 10,
   },
   detailLabel: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 2,
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
   },
   detailValue: {
-    fontSize: 16,
-    color: '#1A1A2E',
-    fontWeight: '500',
-  },
-  notesSection: {
-    marginTop: 12,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#E8ECF0',
-  },
-  notesLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
-  },
-  notesText: {
-    fontSize: 15,
-    color: '#666',
-    lineHeight: 22,
+    color: '#1F2937',
   },
   acceptButton: {
-    backgroundColor: '#00C853',
-    padding: 18,
-    borderRadius: 14,
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    height: 48,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#00C853',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
   },
   acceptButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  // Empty State
   emptyContainer: {
-    padding: 40,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
   },
   emptyIcon: {
-    fontSize: 64,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
   },
+  emptyIconText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#9CA3AF',
+  },
   emptyTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#1A1A2E',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 8,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
+    color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 24,
   },
 });
 
-export default ViewRequests;
+export default ViewRequestsScreen;

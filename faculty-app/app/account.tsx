@@ -7,12 +7,18 @@ import {
   StatusBar,
   ScrollView,
 } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 
 const AccountScreen = () => {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/login' as any);
+  };
 
   if (!user) {
     return (
@@ -43,7 +49,7 @@ const AccountScreen = () => {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Account</Text>
         <View style={styles.placeholder} />
@@ -66,7 +72,7 @@ const AccountScreen = () => {
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <View style={styles.infoIconContainer}>
-                <Text style={styles.infoIcon}>👤</Text>
+                <Ionicons name="person-outline" size={20} color="#6B7280" />
               </View>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Full Name</Text>
@@ -78,7 +84,7 @@ const AccountScreen = () => {
 
             <View style={styles.infoRow}>
               <View style={styles.infoIconContainer}>
-                <Text style={styles.infoIcon}>✉️</Text>
+                <Ionicons name="mail-outline" size={20} color="#6B7280" />
               </View>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Email Address</Text>
@@ -91,7 +97,7 @@ const AccountScreen = () => {
                 <View style={styles.divider} />
                 <View style={styles.infoRow}>
                   <View style={styles.infoIconContainer}>
-                    <Text style={styles.infoIcon}>🏛️</Text>
+                    <Ionicons name="business-outline" size={20} color="#6B7280" />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={styles.infoLabel}>Department</Text>
@@ -106,7 +112,7 @@ const AccountScreen = () => {
                 <View style={styles.divider} />
                 <View style={styles.infoRow}>
                   <View style={styles.infoIconContainer}>
-                    <Text style={styles.infoIcon}>📱</Text>
+                    <Ionicons name="call-outline" size={20} color="#6B7280" />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={styles.infoLabel}>Phone Number</Text>
@@ -125,7 +131,7 @@ const AccountScreen = () => {
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <View style={styles.infoIconContainer}>
-                <Text style={styles.infoIcon}>📱</Text>
+                <Ionicons name="information-circle-outline" size={20} color="#6B7280" />
               </View>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>App Version</Text>
@@ -137,7 +143,7 @@ const AccountScreen = () => {
 
             <View style={styles.infoRow}>
               <View style={styles.infoIconContainer}>
-                <Text style={styles.infoIcon}>🏫</Text>
+                <Ionicons name="school-outline" size={20} color="#6B7280" />
               </View>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Institution</Text>
@@ -146,6 +152,16 @@ const AccountScreen = () => {
             </View>
           </View>
         </View>
+
+        {/* Logout Button */}
+        <TouchableOpacity 
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -279,6 +295,11 @@ const styles = StyleSheet.create({
   infoIcon: {
     fontSize: 22,
   },
+  infoIconText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E3A5F',
+  },
   infoContent: {
     flex: 1,
   },
@@ -296,6 +317,23 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F0F0F0',
     marginLeft: 70,
+  },
+  logoutButton: {
+    marginHorizontal: 20,
+    marginTop: 32,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 12,
+    height: 50,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
   },
   bottomPadding: {
     height: 40,

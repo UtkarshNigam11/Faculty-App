@@ -1,129 +1,59 @@
 import { useState } from 'react';
-import { 
-  Text, 
-  View, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView,
+import {
+  Text,
+  View,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   SafeAreaView,
   StatusBar,
-  Platform,
-  Modal,
-} from "react-native";
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { createRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-// Only import DateTimePicker on native platforms
-let DateTimePicker: any = null;
-if (Platform.OS !== 'web') {
-  DateTimePicker = require('@react-native-community/datetimepicker').default;
-}
-
-const RequestSubstitute = () => {
+const RequestSubstituteScreen = () => {
   const router = useRouter();
   const { user } = useAuth();
   const [subject, setSubject] = useState('');
-  const [date, setDate] = useState<Date | null>(null);
-  const [time, setTime] = useState<Date | null>(null);
-  const [duration, setDuration] = useState('');
-  const [classRoom, setClassRoom] = useState('');
+  const [classroom, setClassroom] = useState('');
+  const [date, setDate] = useState(new Date());
+  const [time, setTime] = useState(new Date());
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Picker visibility states
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  // Format date for display (DD/MM/YYYY)
-  const formatDateDisplay = (dateObj: Date | null): string => {
-    if (!dateObj) return '';
-    const day = dateObj.getDate().toString().padStart(2, '0');
-    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-    const year = dateObj.getFullYear();
-    return `${day}/${month}/${year}`;
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric'
+    });
   };
 
-  // Format time for display (HH:MM AM/PM)
-  const formatTimeDisplay = (timeObj: Date | null): string => {
-    if (!timeObj) return '';
-    let hours = timeObj.getHours();
-    const minutes = timeObj.getMinutes().toString().padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12; // 0 should be 12
-    return `${hours}:${minutes} ${ampm}`;
-  };
-
-  // Format date for backend (YYYY-MM-DD)
-  const formatDateForBackend = (dateObj: Date): string => {
-    const year = dateObj.getFullYear();
-    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-    const day = dateObj.getDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    if (event.type === 'set' && selectedDate) {
-      setDate(selectedDate);
-    }
-  };
-
-  const onTimeChange = (event: any, selectedTime?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowTimePicker(false);
-    }
-    if (event.type === 'set' && selectedTime) {
-      setTime(selectedTime);
-    }
-  };
-
-  // Web date change handler
-  const onWebDateChange = (e: any) => {
-    const value = e.target.value;
-    if (value) {
-      setDate(new Date(value));
-    }
-  };
-
-  // Web time change handler
-  const onWebTimeChange = (e: any) => {
-    const value = e.target.value;
-    if (value) {
-      const [hours, minutes] = value.split(':');
-      const timeDate = new Date();
-      timeDate.setHours(parseInt(hours), parseInt(minutes), 0);
-      setTime(timeDate);
-    }
-  };
-
-  // Format date for web input (YYYY-MM-DD)
-  const formatDateForWeb = (dateObj: Date | null): string => {
-    if (!dateObj) return '';
-    return formatDateForBackend(dateObj);
-  };
-
-  // Format time for web input (HH:MM)
-  const formatTimeForWeb = (timeObj: Date | null): string => {
-    if (!timeObj) return '';
-    const hours = timeObj.getHours().toString().padStart(2, '0');
-    const minutes = timeObj.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
   const handleSubmit = async () => {
-    if (!subject || !date || !time || !duration || !classRoom) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (!subject.trim() || !classroom.trim()) {
+      Alert.alert('Error', 'Please fill in Subject and Room Number');
       return;
     }
 
     if (!user) {
-      Alert.alert('Error', 'You must be logged in');
+      Alert.alert('Error', 'Please login again');
       return;
     }
 
@@ -131,17 +61,19 @@ const RequestSubstitute = () => {
     try {
       await createRequest({
         teacher_id: user.id,
-        subject,
-        date: formatDateForBackend(date),
-        time: formatTimeDisplay(time),
-        duration: parseInt(duration),
-        classroom: classRoom,
-        notes: notes || undefined,
+        subject: subject.trim(),
+        date: date.toISOString().split('T')[0],
+        time: formatTime(time),
+        duration: 60,
+        classroom: classroom.trim(),
+        notes: notes.trim() || undefined,
       });
 
-      Alert.alert('Success', 'Substitute request created successfully', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      Alert.alert(
+        'Success',
+        'Your substitute request has been submitted!',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to create request');
     } finally {
@@ -149,77 +81,9 @@ const RequestSubstitute = () => {
     }
   };
 
-  // iOS Modal Picker for Date
-  const renderIOSDatePicker = () => {
-    if (!DateTimePicker) return null;
-    return (
-      <Modal
-        visible={showDatePicker}
-        transparent={true}
-        animationType="slide"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.pickerModal}>
-            <View style={styles.pickerHeader}>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Text style={styles.pickerCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.pickerTitle}>Select Date</Text>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Text style={styles.pickerDoneText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-            <DateTimePicker
-              value={date || new Date()}
-              mode="date"
-              display="spinner"
-              onChange={onDateChange}
-              minimumDate={new Date()}
-              style={styles.iosPicker}
-            />
-          </View>
-        </View>
-      </Modal>
-    );
-  };
-
-  // iOS Modal Picker for Time
-  const renderIOSTimePicker = () => {
-    if (!DateTimePicker) return null;
-    return (
-      <Modal
-        visible={showTimePicker}
-        transparent={true}
-        animationType="slide"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.pickerModal}>
-            <View style={styles.pickerHeader}>
-              <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                <Text style={styles.pickerCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.pickerTitle}>Select Time</Text>
-              <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                <Text style={styles.pickerDoneText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-            <DateTimePicker
-              value={time || new Date()}
-              mode="time"
-              display="spinner"
-              onChange={onTimeChange}
-              style={styles.iosPicker}
-              is24Hour={false}
-            />
-          </View>
-        </View>
-      </Modal>
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#2E5BFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -228,161 +92,125 @@ const RequestSubstitute = () => {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Ionicons name="chevron-back" size={24} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Request Substitute</Text>
-        <View style={styles.headerSpacer} />
+        <View style={styles.placeholder} />
       </View>
 
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <View style={styles.divider} />
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
       >
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoIcon}>ℹ️</Text>
-          <Text style={styles.infoText}>
-            Fill in the class details below. Other faculty members will be notified of your request.
-          </Text>
-        </View>
+        <ScrollView 
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Class Details Section */}
+          <Text style={styles.sectionTitle}>CLASS DETAILS</Text>
 
-        {/* Form */}
-        <View style={styles.formSection}>
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Subject <Text style={styles.required}>*</Text></Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Data Structures, Physics"
-              placeholderTextColor="#999"
-              value={subject}
-              onChangeText={setSubject}
-            />
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Date <Text style={styles.required}>*</Text></Text>
-              {Platform.OS === 'web' ? (
-                <input
-                  type="date"
-                  value={formatDateForWeb(date)}
-                  onChange={onWebDateChange}
-                  min={new Date().toISOString().split('T')[0]}
-                  style={{
-                    backgroundColor: '#F5F7FA',
-                    padding: 18,
-                    borderRadius: 12,
-                    fontSize: 17,
-                    border: '2px solid #E8ECF0',
-                    color: '#1A1A2E',
-                    width: '100%',
-                    boxSizing: 'border-box' as any,
-                  }}
-                />
-              ) : (
-                <TouchableOpacity
-                  style={styles.pickerButton}
-                  onPress={() => setShowDatePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pickerButtonText, !date && styles.placeholderText]}>
-                    {date ? formatDateDisplay(date) : '📅 Select Date'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.label}>Time <Text style={styles.required}>*</Text></Text>
-              {Platform.OS === 'web' ? (
-                <input
-                  type="time"
-                  value={formatTimeForWeb(time)}
-                  onChange={onWebTimeChange}
-                  style={{
-                    backgroundColor: '#F5F7FA',
-                    padding: 18,
-                    borderRadius: 12,
-                    fontSize: 17,
-                    border: '2px solid #E8ECF0',
-                    color: '#1A1A2E',
-                    width: '100%',
-                    boxSizing: 'border-box' as any,
-                  }}
-                />
-              ) : (
-                <TouchableOpacity
-                  style={styles.pickerButton}
-                  onPress={() => setShowTimePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pickerButtonText, !time && styles.placeholderText]}>
-                    {time ? formatTimeDisplay(time) : '🕐 Select Time'}
-                  </Text>
-                </TouchableOpacity>
-              )}
+            <Text style={styles.label}>Subject Name</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="book-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., CS-101 Data Structures"
+                placeholderTextColor="#9CA3AF"
+                value={subject}
+                onChangeText={setSubject}
+              />
             </View>
           </View>
 
-          {/* Android Date Picker (renders inline) */}
-          {showDatePicker && Platform.OS === 'android' && DateTimePicker && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Room Number</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="location-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., C-105"
+                placeholderTextColor="#9CA3AF"
+                value={classroom}
+                onChangeText={setClassroom}
+              />
+            </View>
+          </View>
+
+          <View style={styles.sectionDivider} />
+
+          {/* Schedule Section */}
+          <Text style={styles.sectionTitle}>SCHEDULE</Text>
+
+          <View style={styles.dateTimeRow}>
+            <View style={styles.dateTimeField}>
+              <Text style={styles.label}>Date</Text>
+              <TouchableOpacity 
+                style={styles.dateTimeButton}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="calendar-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+                <Text style={styles.dateTimeText}>{formatDate(date)}</Text>
+                <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.dateTimeField}>
+              <Text style={styles.label}>Time</Text>
+              <TouchableOpacity 
+                style={styles.dateTimeButton}
+                onPress={() => setShowTimePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="time-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+                <Text style={styles.dateTimeText}>{formatTime(time)}</Text>
+                <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {showDatePicker && (
             <DateTimePicker
-              value={date || new Date()}
+              value={date}
               mode="date"
               display="default"
-              onChange={onDateChange}
               minimumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) setDate(selectedDate);
+              }}
             />
           )}
 
-          {/* Android Time Picker (renders inline) - 12 hour format */}
-          {showTimePicker && Platform.OS === 'android' && DateTimePicker && (
+          {showTimePicker && (
             <DateTimePicker
-              value={time || new Date()}
+              value={time}
               mode="time"
-              display="spinner"
-              onChange={onTimeChange}
-              is24Hour={false}
+              display="default"
+              onChange={(event, selectedTime) => {
+                setShowTimePicker(false);
+                if (selectedTime) setTime(selectedTime);
+              }}
             />
           )}
 
-          {/* iOS Pickers (Modal) */}
-          {Platform.OS === 'ios' && renderIOSDatePicker()}
-          {Platform.OS === 'ios' && renderIOSTimePicker()}
+          <View style={styles.sectionDivider} />
 
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Duration (min) <Text style={styles.required}>*</Text></Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 60"
-                placeholderTextColor="#999"
-                value={duration}
-                onChangeText={setDuration}
-                keyboardType="numeric"
-              />
-            </View>
-
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.label}>Classroom <Text style={styles.required}>*</Text></Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Room 101"
-                placeholderTextColor="#999"
-                value={classRoom}
-                onChangeText={setClassRoom}
-              />
-            </View>
+          {/* Additional Info Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>ADDITIONAL INFO</Text>
+            <Text style={styles.optionalText}>Optional</Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Additional Notes</Text>
+          <View style={styles.textAreaContainer}>
             <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Any special instructions, topics to cover, or materials needed..."
-              placeholderTextColor="#999"
+              style={styles.textArea}
+              placeholder="Any special instructions for the substitute..."
+              placeholderTextColor="#9CA3AF"
               value={notes}
               onChangeText={setNotes}
               multiline
@@ -391,26 +219,26 @@ const RequestSubstitute = () => {
             />
           </View>
 
+          {/* Submit Button */}
           <TouchableOpacity 
-            style={[styles.submitButton, isLoading && styles.buttonDisabled]}
+            style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
             onPress={handleSubmit}
             disabled={isLoading}
-            activeOpacity={0.85}
+            activeOpacity={0.8}
           >
             <Text style={styles.submitButtonText}>
               {isLoading ? 'Submitting...' : 'Submit Request'}
             </Text>
+            {!isLoading && <Text style={styles.arrowIcon}>→</Text>}
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+          <Text style={styles.disclaimer}>
+            By submitting, you agree to the faculty guidelines.
+          </Text>
+
+          <View style={styles.bottomPadding} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -418,190 +246,170 @@ const RequestSubstitute = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 20,
   },
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 8 : 36 : 12,
-    paddingBottom: 12,
-    backgroundColor: '#2E5BFF',
+    paddingVertical: 16,
   },
   backButton: {
-    padding: 6,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  backButtonText: {
-    fontSize: 15,
-    color: '#fff',
-    fontWeight: '500',
+  backIcon: {
+    fontSize: 32,
+    color: '#374151',
+    fontWeight: '300',
   },
   headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
   },
-  headerSpacer: {
-    width: 50,
+  placeholder: {
+    width: 40,
   },
-  // Content
-  scrollView: {
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  keyboardView: {
     flex: 1,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 30,
+  content: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
-  // Info Card
-  infoCard: {
-    backgroundColor: '#E8F4FD',
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10B981',
+    letterSpacing: 1,
     marginBottom: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: '#2E5BFF',
   },
-  infoIcon: {
-    fontSize: 16,
-    marginRight: 10,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  infoText: {
-    flex: 1,
+  optionalText: {
     fontSize: 13,
-    color: '#1A1A2E',
-    lineHeight: 18,
-  },
-  // Form
-  formSection: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 4,
+    color: '#9CA3AF',
+    marginBottom: 16,
   },
   inputGroup: {
-    marginBottom: 14,
-  },
-  row: {
-    flexDirection: 'row',
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
+    color: '#374151',
+    marginBottom: 8,
   },
-  required: {
-    color: '#E53935',
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    height: 54,
+  },
+  inputIcon: {
+    marginRight: 12,
   },
   input: {
-    backgroundColor: '#F5F7FA',
-    padding: 12,
-    borderRadius: 10,
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 24,
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  dateTimeField: {
+    flex: 1,
+  },
+  dateTimeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    height: 54,
+  },
+  dateTimeText: {
     fontSize: 15,
-    borderWidth: 1.5,
-    borderColor: '#E8ECF0',
-    color: '#1A1A2E',
+    color: '#1F2937',
+  },
+  dateTimeIcon: {
+    fontSize: 18,
+  },
+  textAreaContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 16,
+    minHeight: 120,
   },
   textArea: {
-    height: 90,
-    paddingTop: 12,
+    fontSize: 16,
+    color: '#1F2937',
+    lineHeight: 22,
   },
   submitButton: {
-    backgroundColor: '#2E5BFF',
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: '#10B981',
+    borderRadius: 16,
+    height: 56,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#2E5BFF',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
+    marginTop: 32,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 4,
   },
-  buttonDisabled: {
+  submitButtonDisabled: {
     opacity: 0.7,
   },
   submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  cancelButton: {
-    backgroundColor: '#F5F7FA',
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: '#E8ECF0',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  // Picker Styles
-  pickerButton: {
-    backgroundColor: '#F5F7FA',
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#E8ECF0',
-    justifyContent: 'center',
-  },
-  pickerButtonText: {
-    fontSize: 15,
-    color: '#1A1A2E',
-  },
-  placeholderText: {
-    color: '#999',
-  },
-  // iOS Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  pickerModal: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 34,
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8ECF0',
-  },
-  pickerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A2E',
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginRight: 8,
   },
-  pickerCancelText: {
-    fontSize: 17,
-    color: '#999',
-    fontWeight: '500',
+  arrowIcon: {
+    fontSize: 20,
+    color: '#FFFFFF',
   },
-  pickerDoneText: {
-    fontSize: 17,
-    color: '#2E5BFF',
-    fontWeight: '600',
+  disclaimer: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 16,
   },
-  iosPicker: {
-    height: 200,
+  bottomPadding: {
+    height: 40,
   },
 });
 
-export default RequestSubstitute;
+export default RequestSubstituteScreen;

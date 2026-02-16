@@ -1,24 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { 
   Text, 
   View, 
   StyleSheet, 
   TouchableOpacity, 
-  Modal,
-  Pressable,
   SafeAreaView,
   StatusBar,
   ScrollView,
-  Platform,
-  Alert,
+  RefreshControl,
 } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
+import { getTeacherRequests, getPendingRequests } from '../services/api';
 
 const HomeScreen = () => {
   const router = useRouter();
-  const { user, isLoading, logout } = useAuth();
-  const [menuVisible, setMenuVisible] = useState(false);
+  const { user, isLoading } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+  const [availableCount, setAvailableCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchCounts = useCallback(async () => {
+    if (!user) return;
+    try {
+      const [myRequests, pendingRequests] = await Promise.all([
+        getTeacherRequests(user.id),
+        getPendingRequests()
+      ]);
+      
+      const myPending = myRequests.filter((r: any) => r.status === 'pending').length;
+      setPendingCount(myPending);
+      setAvailableCount(pendingRequests.length);
+    } catch (error) {
+      console.log('Error fetching counts:', error);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -26,7 +43,17 @@ const HomeScreen = () => {
     }
   }, [user, isLoading]);
 
-  if (isLoading) {
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchCounts();
+    setRefreshing(false);
+  }, [fetchCounts]);
+
+  if (isLoading || !user) {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Loading...</Text>
@@ -34,38 +61,6 @@ const HomeScreen = () => {
     );
   }
 
-  if (!user) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Redirecting to login...</Text>
-      </View>
-    );
-  }
-
-  const handleRequestSubstitute = () => {
-    router.push('/request-substitute');
-  };
-
-  const handleViewRequests = () => {
-    router.push('/view-requests');
-  };
-
-  const handleMyRequests = () => {
-    router.push('/my-requests');
-  };
-
-  const handleLogout = async () => {
-    setMenuVisible(false);
-    await logout();
-    router.replace('/login' as any);
-  };
-
-  const handleAccount = () => {
-    setMenuVisible(false);
-    router.push('/account');
-  };
-
-  // Get initials for avatar
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -77,155 +72,133 @@ const HomeScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#2E5BFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
       
-      {/* Header */}
-      <View style={styles.header}>
+      <ScrollView 
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#10B981']} />
+        }
+      >
+        {/* Welcome Section */}
+        <View style={styles.welcomeSection}>
+          <Text style={styles.portalText}>KIIT Faculty Portal</Text>
+          <Text style={styles.welcomeText}>Welcome,</Text>
+          <Text style={styles.userName}>{user.name}</Text>
+        </View>
+
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          <View style={[styles.statCard, styles.statCardGreen]}>
+            <Text style={styles.statNumber}>{pendingCount}</Text>
+            <Text style={styles.statLabel}>Pending Requests</Text>
+          </View>
+          <View style={[styles.statCard, styles.statCardWhite]}>
+            <Text style={[styles.statNumber, styles.statNumberDark]}>{availableCount}</Text>
+            <Text style={[styles.statLabel, styles.statLabelDark]}>Available to Accept</Text>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+
         <TouchableOpacity 
-          style={styles.menuButton}
-          onPress={() => setMenuVisible(true)}
-          activeOpacity={0.7}
+          style={styles.actionCardPrimary}
+          onPress={() => router.push('/request-substitute')}
+          activeOpacity={0.8}
         >
-          <View style={styles.menuLine} />
-          <View style={styles.menuLine} />
-          <View style={styles.menuLine} />
+          <View style={styles.actionIconContainer}>
+            <Ionicons name="add-circle" size={28} color="#FFFFFF" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Request Substitute</Text>
+            <Text style={styles.actionSubtitle}>Create a new request for leave.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
-        <View style={styles.profileSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(user.name)}</Text>
-          </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.userName}>{user.name}</Text>
-            <Text style={styles.department}>{user.department || 'KIIT Faculty'}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Menu Modal */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={menuVisible}
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setMenuVisible(false)}
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => router.push('/my-requests')}
+          activeOpacity={0.8}
         >
-          <Pressable style={styles.menuModal} onPress={e => e.stopPropagation()}>
-            <View style={styles.menuHeader}>
-              <View style={styles.menuAvatar}>
-                <Text style={styles.menuAvatarText}>{getInitials(user.name)}</Text>
-              </View>
-              <Text style={styles.menuUserName}>{user.name}</Text>
-              <Text style={styles.menuEmail}>{user.email}</Text>
-            </View>
-
-            <View style={styles.menuContent}>
-              <TouchableOpacity 
-                style={styles.menuItem}
-                onPress={handleAccount}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.menuItemIcon}>👤</Text>
-                <Text style={styles.menuItemText}>My Account</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.menuItem}
-                onPress={() => { setMenuVisible(false); handleMyRequests(); }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.menuItemIcon}>📁</Text>
-                <Text style={styles.menuItemText}>My Requests</Text>
-              </TouchableOpacity>
-
-              <View style={styles.menuDivider} />
-
-              <TouchableOpacity 
-                style={styles.menuItem}
-                onPress={handleLogout}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.menuItemIcon}>🚪</Text>
-                <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Main Content - Scrollable */}
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.content}>
-          <Text style={styles.greeting}>Welcome back!</Text>
-          <Text style={styles.subtitle}>What would you like to do today?</Text>
-
-          <View style={styles.cardsContainer}>
-            <TouchableOpacity 
-              style={styles.card}
-              onPress={handleRequestSubstitute}
-              activeOpacity={0.85}
-            >
-              <View style={styles.cardIconContainer}>
-                <Text style={styles.cardIcon}>📝</Text>
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>Request Substitute</Text>
-                <Text style={styles.cardDescription}>
-                  Can't take a class? Request another faculty to cover for you.
-                </Text>
-              </View>
-              <Text style={styles.cardArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.card}
-              onPress={handleMyRequests}
-              activeOpacity={0.85}
-            >
-              <View style={styles.cardIconContainer}>
-                <Text style={styles.cardIcon}>📁</Text>
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>My Requests</Text>
-                <Text style={styles.cardDescription}>
-                  View and manage your substitute requests.
-                </Text>
-              </View>
-              <Text style={styles.cardArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.card}
-              onPress={handleViewRequests}
-              activeOpacity={0.85}
-            >
-              <View style={styles.cardIconContainer}>
-                <Text style={styles.cardIcon}>📋</Text>
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>View Requests</Text>
-                <Text style={styles.cardDescription}>
-                  See available substitute requests and help colleagues.
-                </Text>
-              </View>
-              <Text style={styles.cardArrow}>›</Text>
-            </TouchableOpacity>
+          <View style={[styles.actionIconContainer, styles.actionIconBlue]}>
+            <Ionicons name="document-text" size={24} color="#FFFFFF" />
           </View>
-        </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>My Requests</Text>
+            <Text style={styles.actionSubtitle}>Track status of submitted requests</Text>
+          </View>
+          {pendingCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{pendingCount} Pending</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Faculty Substitute System</Text>
-          <Text style={styles.footerSubtext}>KIIT University</Text>
-        </View>
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => router.push('/view-requests')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIconContainer, styles.actionIconPurple]}>
+            <Ionicons name="hand-left" size={24} color="#FFFFFF" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Available Requests</Text>
+            <Text style={styles.actionSubtitle}>Step in for colleagues</Text>
+          </View>
+          {availableCount > 0 && (
+            <Text style={styles.countText}>{availableCount}</Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.bottomPadding} />
       </ScrollView>
+
+      {/* Bottom Navigation */}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.navItem} activeOpacity={0.7}>
+          <View style={[styles.navIcon, styles.navIconActive]}>
+            <Ionicons name="home" size={22} color="#FFFFFF" />
+          </View>
+          <Text style={[styles.navLabel, styles.navLabelActive]}>Home</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.navItem} 
+          onPress={() => router.push('/my-requests')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.navIcon}>
+            <Ionicons name="document-text-outline" size={22} color="#6B7280" />
+          </View>
+          <Text style={styles.navLabel}>Requests</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.navItem} 
+          onPress={() => router.push('/view-requests')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.navIcon}>
+            <Ionicons name="hand-left-outline" size={22} color="#6B7280" />
+          </View>
+          <Text style={styles.navLabel}>Available</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.navItem} 
+          onPress={() => router.push('/account')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.navIcon}>
+            <Ionicons name="person-outline" size={22} color="#6B7280" />
+          </View>
+          <Text style={styles.navLabel}>Account</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -233,244 +206,216 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F9FAFB',
+    paddingTop: 20,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#F9FAFB',
   },
   loadingText: {
-    fontSize: 20,
-    color: '#666',
+    fontSize: 18,
+    color: '#6B7280',
   },
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  content: {
+    flex: 1,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 40 : 16,
+  },
+  welcomeSection: {
+    paddingTop: 24,
     paddingBottom: 20,
-    backgroundColor: '#2E5BFF',
   },
-  // ScrollView
-  scrollView: {
+  portalText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  welcomeText: {
+    fontSize: 28,
+    fontWeight: '300',
+    color: '#1F2937',
+  },
+  userName: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 28,
+  },
+  statCard: {
     flex: 1,
+    padding: 20,
+    borderRadius: 16,
   },
-  scrollContent: {
-    flexGrow: 1,
+  statCardGreen: {
+    backgroundColor: '#ECFDF5',
   },
-  menuButton: {
-    padding: 14,
-    marginRight: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  statCardWhite: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  menuLine: {
-    width: 22,
-    height: 3,
-    backgroundColor: '#fff',
-    marginVertical: 2.5,
-    borderRadius: 2,
+  statNumber: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#10B981',
+    marginBottom: 4,
   },
-  profileSection: {
+  statNumberDark: {
+    color: '#1F2937',
+  },
+  statLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  statLabelDark: {
+    color: '#6B7280',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  actionCardPrimary: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#fff',
+  actionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  actionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#10B981',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2E5BFF',
+  actionIconBlue: {
+    backgroundColor: '#EFF6FF',
   },
-  profileInfo: {
-    flex: 1,
+  actionIconPurple: {
+    backgroundColor: '#F3E8FF',
   },
-  userName: {
+  actionIconPlus: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    fontWeight: '300',
+  },
+  actionIconEmoji: {
     fontSize: 22,
-    fontWeight: '600',
-    color: '#fff',
   },
-  department: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 2,
-  },
-  // Menu Modal
-  modalOverlay: {
+  actionContent: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  menuModal: {
-    backgroundColor: '#fff',
-    width: 300,
-    height: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 15,
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 2,
   },
-  menuHeader: {
-    backgroundColor: '#2E5BFF',
-    padding: 28,
-    paddingTop: 60,
+  actionSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  actionArrow: {
+    fontSize: 28,
+    color: '#D1D5DB',
+    fontWeight: '300',
+  },
+  badge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  countText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  bottomPadding: {
+    height: 80,
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  navItem: {
+    flex: 1,
     alignItems: 'center',
   },
-  menuAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#fff',
+  navIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  menuAvatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#2E5BFF',
-  },
-  menuUserName: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#fff',
     marginBottom: 4,
   },
-  menuEmail: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.85)',
+  navIconActive: {
+    backgroundColor: '#10B981',
   },
-  menuContent: {
-    padding: 12,
+  navIconText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6B7280',
   },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#E8ECF0',
-    marginVertical: 8,
-    marginHorizontal: 8,
+  navIconTextActive: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-  },
-  menuItemIcon: {
-    fontSize: 28,
-    marginRight: 18,
-  },
-  menuItemText: {
-    fontSize: 20,
-    color: '#333',
-    fontWeight: '500',
-  },
-  logoutText: {
-    color: '#E53935',
-  },
-  // Content
-  content: {
-    flex: 1,
-    padding: 24,
-  },
-  greeting: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#1A1A2E',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#666',
-    marginBottom: 36,
-  },
-  cardsContainer: {
-    gap: 20,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 5,
-    borderLeftWidth: 5,
-    borderLeftColor: '#2E5BFF',
-  },
-  cardIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 14,
-    backgroundColor: '#F0F4FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  cardIcon: {
-    fontSize: 32,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  cardTitle: {
-    fontSize: 20,
+  navLabel: {
+    fontSize: 11,
     fontWeight: '600',
-    color: '#1A1A2E',
-    marginBottom: 6,
+    color: '#6B7280',
   },
-  cardDescription: {
-    fontSize: 15,
-    color: '#666',
-    lineHeight: 22,
+  navLabelActive: {
+    color: '#10B981',
   },
-  cardArrow: {
-    fontSize: 32,
-    color: '#2E5BFF',
-    fontWeight: '300',
-    marginLeft: 8,
-  },
-  // Footer
-  footer: {
-    padding: 20,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#E8ECF0',
-    backgroundColor: '#fff',
-  },
-  footerText: {
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '500',
-  },
-  footerSubtext: {
-    fontSize: 13,
-    color: '#999',
-    marginTop: 4,
+  actionIconText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 
