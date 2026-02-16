@@ -42,6 +42,7 @@ const MyRequestsScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [expandedSubstitute, setExpandedSubstitute] = useState<string | null>(null);
 
   const fetchRequests = async () => {
     if (!user) return;
@@ -160,7 +161,11 @@ const MyRequestsScreen = () => {
           <View style={styles.substituteSection}>
             <View style={styles.substituteDivider} />
             <Text style={styles.substituteTitle}>SUBSTITUTE DETAILS</Text>
-            <View style={styles.substituteCard}>
+            <TouchableOpacity 
+              style={styles.substituteCard}
+              onPress={() => setExpandedSubstitute(expandedSubstitute === item.id ? null : item.id)}
+              activeOpacity={0.7}
+            >
               <View style={styles.substituteHeader}>
                 <View style={styles.substituteAvatar}>
                   <Text style={styles.substituteAvatarText}>
@@ -173,10 +178,33 @@ const MyRequestsScreen = () => {
                     <Text style={styles.substituteDept}>{item.acceptor_department}</Text>
                   )}
                 </View>
+                <Ionicons 
+                  name={expandedSubstitute === item.id ? 'chevron-up' : 'chevron-down'} 
+                  size={20} 
+                  color="#6B7280" 
+                />
               </View>
-              
-              {/* Contact Actions */}
-              <View style={styles.contactActions}>
+            </TouchableOpacity>
+            
+            {/* Expanded Contact Details */}
+            {expandedSubstitute === item.id && (
+              <View style={styles.expandedDetails}>
+                {/* Contact Info */}
+                {item.acceptor_email && (
+                  <View style={styles.contactInfoRow}>
+                    <Ionicons name="mail-outline" size={16} color="#6B7280" />
+                    <Text style={styles.contactInfoText}>{item.acceptor_email}</Text>
+                  </View>
+                )}
+                {item.acceptor_phone && (
+                  <View style={styles.contactInfoRow}>
+                    <Ionicons name="call-outline" size={16} color="#6B7280" />
+                    <Text style={styles.contactInfoText}>{item.acceptor_phone}</Text>
+                  </View>
+                )}
+                
+                {/* Contact Actions */}
+                <View style={styles.contactActions}>
                 {item.acceptor_email && (
                   <TouchableOpacity 
                     style={styles.contactButton}
@@ -198,7 +226,8 @@ const MyRequestsScreen = () => {
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -512,6 +541,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#10B981',
+  },
+  expandedDetails: {
+    marginTop: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+  },
+  contactInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  contactInfoText: {
+    fontSize: 14,
+    color: '#4B5563',
   },
   cancelButton: {
     marginTop: 16,
