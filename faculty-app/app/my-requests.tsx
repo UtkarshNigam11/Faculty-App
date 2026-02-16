@@ -10,6 +10,7 @@ import {
   Alert,
   SafeAreaView,
   StatusBar,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -25,7 +26,11 @@ type Request = {
   classroom: string;
   status: 'pending' | 'accepted' | 'completed' | 'cancelled';
   notes?: string;
-  substitute_name?: string;
+  accepted_by?: number;
+  acceptor_name?: string;
+  acceptor_email?: string;
+  acceptor_department?: string;
+  acceptor_phone?: string;
 };
 
 type FilterTab = 'all' | 'pending' | 'accepted' | 'cancelled';
@@ -151,16 +156,48 @@ const MyRequestsScreen = () => {
         </View>
 
         {/* Substitute Info (if accepted) */}
-        {item.status === 'accepted' && item.substitute_name && (
-          <View style={styles.substituteInfo}>
-            <View style={styles.substituteAvatar}>
-              <Text style={styles.substituteAvatarText}>
-                {item.substitute_name[0].toUpperCase()}
-              </Text>
-            </View>
-            <View>
-              <Text style={styles.substituteLabel}>Substituted by</Text>
-              <Text style={styles.substituteName}>{item.substitute_name}</Text>
+        {item.status === 'accepted' && item.acceptor_name && (
+          <View style={styles.substituteSection}>
+            <View style={styles.substituteDivider} />
+            <Text style={styles.substituteTitle}>SUBSTITUTE DETAILS</Text>
+            <View style={styles.substituteCard}>
+              <View style={styles.substituteHeader}>
+                <View style={styles.substituteAvatar}>
+                  <Text style={styles.substituteAvatarText}>
+                    {item.acceptor_name[0].toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.substituteInfo}>
+                  <Text style={styles.substituteName}>{item.acceptor_name}</Text>
+                  {item.acceptor_department && (
+                    <Text style={styles.substituteDept}>{item.acceptor_department}</Text>
+                  )}
+                </View>
+              </View>
+              
+              {/* Contact Actions */}
+              <View style={styles.contactActions}>
+                {item.acceptor_email && (
+                  <TouchableOpacity 
+                    style={styles.contactButton}
+                    onPress={() => Linking.openURL(`mailto:${item.acceptor_email}`)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="mail-outline" size={16} color="#10B981" />
+                    <Text style={styles.contactButtonText}>Email</Text>
+                  </TouchableOpacity>
+                )}
+                {item.acceptor_phone && (
+                  <TouchableOpacity 
+                    style={styles.contactButton}
+                    onPress={() => Linking.openURL(`tel:${item.acceptor_phone}`)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="call-outline" size={16} color="#10B981" />
+                    <Text style={styles.contactButtonText}>Call</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
         )}
@@ -404,36 +441,77 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#374151',
   },
-  substituteInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  substituteSection: {
+    marginTop: 8,
+  },
+  substituteDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 12,
+  },
+  substituteTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  substituteCard: {
     backgroundColor: '#F0FDF4',
     borderRadius: 12,
     padding: 12,
-    marginTop: 12,
-    gap: 12,
+  },
+  substituteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  substituteInfo: {
+    marginLeft: 12,
   },
   substituteAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D1FAE5',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#10B981',
     justifyContent: 'center',
     alignItems: 'center',
   },
   substituteAvatarText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
-    color: '#059669',
-  },
-  substituteLabel: {
-    fontSize: 12,
-    color: '#6B7280',
+    color: '#FFFFFF',
   },
   substituteName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#059669',
+    color: '#1F2937',
+  },
+  substituteDept: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  contactActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  contactButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 10,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  contactButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#10B981',
   },
   cancelButton: {
     marginTop: 16,

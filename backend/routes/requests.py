@@ -70,9 +70,9 @@ async def get_teacher_requests(teacher_id: int):
     supabase = get_supabase()
     
     try:
-        # Get requests with acceptor name
+        # Get requests with acceptor name and details
         result = supabase.table("substitute_requests")\
-            .select("*, acceptor:users!substitute_requests_accepted_by_fkey(name)")\
+            .select("*, acceptor:users!substitute_requests_accepted_by_fkey(id, name, email, department, phone)")\
             .eq("teacher_id", teacher_id)\
             .order("created_at", desc=True)\
             .execute()
@@ -80,8 +80,14 @@ async def get_teacher_requests(teacher_id: int):
         requests_list = []
         for req in result.data:
             acceptor_name = None
+            acceptor_email = None
+            acceptor_department = None
+            acceptor_phone = None
             if req.get("acceptor"):
                 acceptor_name = req["acceptor"].get("name")
+                acceptor_email = req["acceptor"].get("email")
+                acceptor_department = req["acceptor"].get("department")
+                acceptor_phone = req["acceptor"].get("phone")
             
             requests_list.append(SubstituteRequestResponse(
                 id=req["id"],
@@ -96,7 +102,10 @@ async def get_teacher_requests(teacher_id: int):
                 accepted_by=req.get("accepted_by"),
                 created_at=req.get("created_at"),
                 updated_at=req.get("updated_at"),
-                acceptor_name=acceptor_name
+                acceptor_name=acceptor_name,
+                acceptor_email=acceptor_email,
+                acceptor_department=acceptor_department,
+                acceptor_phone=acceptor_phone
             ))
         
         return requests_list
@@ -105,6 +114,62 @@ async def get_teacher_requests(teacher_id: int):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch teacher requests: {str(e)}"
+        )
+
+
+@router.get("/accepted-by/{teacher_id}", response_model=List[SubstituteRequestResponse])
+async def get_accepted_requests(teacher_id: int):
+    """
+    Get all substitute requests accepted by a specific teacher.
+    """
+    supabase = get_supabase()
+    
+    try:
+        # Get requests accepted by this teacher with original teacher details
+        result = supabase.table("substitute_requests")\
+            .select("*, teacher:users!substitute_requests_teacher_id_fkey(id, name, email, department, phone)")\
+            .eq("accepted_by", teacher_id)\
+            .order("date")\
+            .order("time")\
+            .execute()
+        
+        requests_list = []
+        for req in result.data:
+            teacher_name = None
+            teacher_email = None
+            teacher_department = None
+            teacher_phone = None
+            if req.get("teacher"):
+                teacher_name = req["teacher"].get("name")
+                teacher_email = req["teacher"].get("email")
+                teacher_department = req["teacher"].get("department")
+                teacher_phone = req["teacher"].get("phone")
+            
+            requests_list.append(SubstituteRequestResponse(
+                id=req["id"],
+                teacher_id=req["teacher_id"],
+                subject=req["subject"],
+                date=req["date"],
+                time=req["time"],
+                duration=req["duration"],
+                classroom=req["classroom"],
+                notes=req.get("notes"),
+                status=req["status"],
+                accepted_by=req.get("accepted_by"),
+                created_at=req.get("created_at"),
+                updated_at=req.get("updated_at"),
+                teacher_name=teacher_name,
+                teacher_email=teacher_email,
+                teacher_department=teacher_department,
+                teacher_phone=teacher_phone
+            ))
+        
+        return requests_list
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch accepted requests: {str(e)}"
         )
 
 

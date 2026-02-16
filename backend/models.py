@@ -94,7 +94,13 @@ class SubstituteRequestResponse(SubstituteRequestBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     teacher_name: Optional[str] = None
+    teacher_email: Optional[str] = None
+    teacher_department: Optional[str] = None
+    teacher_phone: Optional[str] = None
     acceptor_name: Optional[str] = None
+    acceptor_email: Optional[str] = None
+    acceptor_department: Optional[str] = None
+    acceptor_phone: Optional[str] = None
 
     class Config:
         from_attributes = True

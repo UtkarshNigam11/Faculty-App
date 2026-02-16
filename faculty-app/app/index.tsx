@@ -124,7 +124,7 @@ const HomeScreen = () => {
           activeOpacity={0.8}
         >
           <View style={[styles.actionIconContainer, styles.actionIconBlue]}>
-            <Ionicons name="document-text" size={24} color="#FFFFFF" />
+            <Ionicons name="document-text" size={24} color="#3B82F6" />
           </View>
           <View style={styles.actionContent}>
             <Text style={styles.actionTitle}>My Requests</Text>
@@ -143,7 +143,7 @@ const HomeScreen = () => {
           activeOpacity={0.8}
         >
           <View style={[styles.actionIconContainer, styles.actionIconPurple]}>
-            <Ionicons name="hand-left" size={24} color="#FFFFFF" />
+            <Ionicons name="hand-left" size={24} color="#9333EA" />
           </View>
           <View style={styles.actionContent}>
             <Text style={styles.actionTitle}>Available Requests</Text>
@@ -152,6 +152,21 @@ const HomeScreen = () => {
           {availableCount > 0 && (
             <Text style={styles.countText}>{availableCount}</Text>
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => router.push('/accepted-requests')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIconContainer, styles.actionIconGreen]}>
+            <Ionicons name="checkmark-done" size={24} color="#059669" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Accepted by Me</Text>
+            <Text style={styles.actionSubtitle}>Classes you're substituting</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
         <View style={styles.bottomPadding} />
@@ -324,6 +339,9 @@ const styles = StyleSheet.create({
   },
   actionIconPurple: {
     backgroundColor: '#F3E8FF',
+  },
+  actionIconGreen: {
+    backgroundColor: '#D1FAE5',
   },
   actionIconPlus: {
     fontSize: 28,

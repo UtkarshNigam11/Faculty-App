@@ -68,6 +68,19 @@ export const login = async (username: string, password: string) => {
   return response.json();
 };
 
+export const resetPassword = async (email: string) => {
+  const response = await fetch(`${API_BASE_URL}/auth/forgot-password?email=${encodeURIComponent(email)}`, {
+    method: 'POST',
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to send reset link');
+  }
+  
+  return response.json();
+};
+
 // Requests APIs
 export const getPendingRequests = async () => {
   const response = await fetch(`${API_BASE_URL}/requests/`);
@@ -84,6 +97,16 @@ export const getTeacherRequests = async (teacherId: number) => {
   
   if (!response.ok) {
     throw new Error('Failed to fetch teacher requests');
+  }
+  
+  return response.json();
+};
+
+export const getAcceptedRequests = async (teacherId: number) => {
+  const response = await fetch(`${API_BASE_URL}/requests/accepted-by/${teacherId}`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch accepted requests');
   }
   
   return response.json();
