@@ -156,10 +156,13 @@ SUPABASE_KEY=your_supabase_anon_key
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 👨‍💻 Author
+## 👨‍💻 Authors
 
 **Utkarsh Nigam**
 - GitHub: [@UtkarshNigam11](https://github.com/UtkarshNigam11)
+
+**Sujoy Dutta**
+- GitHub: [@dutta-sujoy](https://github.com/dutta-sujoy)
 
 ## 📄 License
 
