@@ -8,6 +8,56 @@ const RootLayout = () => {
   const notificationListener = useRef<{ remove: () => void } | null>(null);
   const responseListener = useRef<{ remove: () => void } | null>(null);
 
+  // Handle deep links for auth callbacks
+  const handleDeepLink = (url: string) => {
+    console.log('Deep link received:', url);
+    const parsedUrl = Linking.parse(url);
+    
+    // Handle password reset redirect
+    if (url.includes('reset-password') || parsedUrl.path === 'reset-password') {
+      // Extract token from URL (Supabase adds it as hash fragment or query param)
+      const accessToken = parsedUrl.queryParams?.access_token;
+      const type = parsedUrl.queryParams?.type;
+      
+      if (type === 'recovery' || accessToken) {
+        router.replace({
+          pathname: '/reset-password' as any,
+          params: { access_token: accessToken || '' }
+        });
+      } else {
+        router.replace('/reset-password' as any);
+      }
+    }
+    // Handle email confirmation
+    else if (url.includes('confirm') || parsedUrl.path === 'confirm') {
+      router.replace('/login');
+    }
+    // Handle auth callback
+    else if (url.includes('auth/callback') || parsedUrl.path === 'auth/callback') {
+      router.replace('/login');
+    }
+  };
+
+  useEffect(() => {
+    // Handle initial deep link (app opened via deep link)
+    const getInitialUrl = async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        handleDeepLink(initialUrl);
+      }
+    };
+    getInitialUrl();
+
+    // Handle deep links when app is already running
+    const subscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   useEffect(() => {
     // Skip notification setup on web
     if (Platform.OS === 'web') return;
@@ -63,6 +113,9 @@ const RootLayout = () => {
         <Stack.Screen name="view-requests" />
         <Stack.Screen name="my-requests" />
         <Stack.Screen name="account" />
+        <Stack.Screen name="forgot-password" />
+        <Stack.Screen name="reset-password" />
+        <Stack.Screen name="accepted-requests" />
       </Stack>
     </AuthProvider>
   );

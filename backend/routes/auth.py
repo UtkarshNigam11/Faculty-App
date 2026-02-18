@@ -361,7 +361,13 @@ async def forgot_password(email: str):
     supabase = get_supabase()
 
     try:
-        supabase.auth.reset_password_email(email)
+        # Use the app's deep link as the redirect URL
+        supabase.auth.reset_password_email(
+            email,
+            options={
+                "redirect_to": "facultyapp://reset-password"
+            }
+        )
         return {"message": f"Password reset email sent to {email}"}
 
     except AuthApiError as e:
@@ -373,4 +379,41 @@ async def forgot_password(email: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send password reset email: {str(e)}"
+        )
+
+
+@router.post("/update-password")
+async def update_password(new_password: str, access_token: str):
+    """
+    Update user's password using the access token from the reset link.
+    """
+    supabase = get_supabase()
+
+    try:
+        # Set the session with the access token from the reset link
+        # Then update the password
+        supabase.auth.set_session(access_token, access_token)
+        
+        # Update the user's password
+        response = supabase.auth.update_user({
+            "password": new_password
+        })
+
+        if response.user is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to update password"
+            )
+
+        return {"message": "Password updated successfully"}
+
+    except AuthApiError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update password: {str(e)}"
         )
