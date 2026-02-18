@@ -154,6 +154,9 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
     """
     supabase = get_supabase()
     
+    print(f"[PUSH-TOKEN] Updating push token for user {user_id}")
+    print(f"[PUSH-TOKEN] Token: {token_update.push_token[:30] if token_update.push_token else 'None'}...")
+    
     try:
         # Check if user exists
         check_result = supabase.table("users")\
@@ -162,6 +165,7 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
             .execute()
         
         if not check_result.data or len(check_result.data) == 0:
+            print(f"[PUSH-TOKEN] User {user_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
@@ -174,11 +178,13 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
             .execute()
         
         if not result.data or len(result.data) == 0:
+            print(f"[PUSH-TOKEN] Failed to update token for user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update push token"
             )
         
+        print(f"[PUSH-TOKEN] Successfully updated token for user {user_id}")
         return {"message": "Push token updated successfully"}
         
     except HTTPException:
