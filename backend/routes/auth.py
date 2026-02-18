@@ -361,11 +361,13 @@ async def forgot_password(email: str):
     supabase = get_supabase()
 
     try:
-        # Use the app's deep link as the redirect URL
+        # Use a web redirect that will then redirect to the app
+        # This is more reliable than direct app scheme redirects
+        redirect_url = os.getenv("RENDER_EXTERNAL_URL", "https://facultyapp-api.onrender.com")
         supabase.auth.reset_password_email(
             email,
             options={
-                "redirect_to": "facultyapp://reset-password"
+                "redirect_to": f"{redirect_url}/api/auth/redirect"
             }
         )
         return {"message": f"Password reset email sent to {email}"}
@@ -380,6 +382,74 @@ async def forgot_password(email: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send password reset email: {str(e)}"
         )
+
+
+@router.get("/redirect")
+async def auth_redirect(
+    access_token: str = None,
+    refresh_token: str = None,
+    type: str = None,
+    token_type: str = None,
+    expires_in: int = None
+):
+    """
+    Handle Supabase auth redirects and redirect to app with tokens.
+    Supabase sends: /redirect#access_token=xxx&refresh_token=yyy&type=recovery
+    But hash fragments aren't sent to server, so they come as query params after JS redirect.
+    """
+    from fastapi.responses import HTMLResponse
+    
+    # If we have tokens, redirect to the app
+    if access_token and type == "recovery":
+        app_url = f"facultyapp://reset-password?access_token={access_token}&refresh_token={refresh_token or ''}&type={type}"
+        # Return HTML that redirects to the app
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirecting...</title>
+            <meta http-equiv="refresh" content="0;url={app_url}">
+        </head>
+        <body>
+            <p>Redirecting to app...</p>
+            <p>If not redirected, <a href="{app_url}">click here</a></p>
+            <script>window.location.href = "{app_url}";</script>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html)
+    
+    # Supabase sends tokens in hash fragment which browser doesn't send to server
+    # We need to use JavaScript to extract and redirect
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Processing...</title>
+    </head>
+    <body>
+        <p>Processing password reset...</p>
+        <script>
+            // Get hash fragment params
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+            const type = params.get('type');
+            
+            if (accessToken && type === 'recovery') {
+                // Redirect to app with tokens
+                const appUrl = `facultyapp://reset-password?access_token=${accessToken}&refresh_token=${refreshToken || ''}&type=${type}`;
+                window.location.href = appUrl;
+            } else {
+                document.body.innerHTML = '<p>Invalid or expired reset link. Please request a new one.</p>';
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 
 
 @router.post("/update-password")
