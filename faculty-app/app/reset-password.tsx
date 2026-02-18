@@ -25,21 +25,60 @@ const ResetPasswordScreen = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   useEffect(() => {
     // Get the access token from the URL params
     const getTokenFromUrl = async () => {
-      const url = await Linking.getInitialURL();
-      if (url) {
-        const parsedUrl = Linking.parse(url);
-        // Extract access_token from hash fragments or query params
-        if (parsedUrl.queryParams?.access_token) {
-          setAccessToken(parsedUrl.queryParams.access_token as string);
+      try {
+        const url = await Linking.getInitialURL();
+        console.log('Reset password - Initial URL:', url);
+        
+        if (url) {
+          // Supabase sends tokens in hash fragment: #access_token=xxx&refresh_token=yyy&type=recovery
+          // We need to parse both query params and hash fragments
+          
+          // First try to get from hash fragment (after #)
+          const hashIndex = url.indexOf('#');
+          if (hashIndex !== -1) {
+            const hashParams = new URLSearchParams(url.substring(hashIndex + 1));
+            const access = hashParams.get('access_token');
+            const refresh = hashParams.get('refresh_token');
+            const type = hashParams.get('type');
+            
+            console.log('Hash params - access_token:', access ? 'found' : 'not found');
+            console.log('Hash params - refresh_token:', refresh ? 'found' : 'not found');
+            console.log('Hash params - type:', type);
+            
+            if (access) setAccessToken(access);
+            if (refresh) setRefreshToken(refresh);
+          }
+          
+          // Also try standard URL parsing
+          const parsedUrl = Linking.parse(url);
+          console.log('Parsed URL:', parsedUrl);
+          
+          if (parsedUrl.queryParams?.access_token) {
+            setAccessToken(parsedUrl.queryParams.access_token as string);
+          }
+          if (parsedUrl.queryParams?.refresh_token) {
+            setRefreshToken(parsedUrl.queryParams.refresh_token as string);
+          }
         }
-      }
-      // Also check params directly
-      if (params.access_token) {
-        setAccessToken(params.access_token as string);
+        
+        // Also check params directly from expo-router
+        if (params.access_token) {
+          console.log('Got access_token from router params');
+          setAccessToken(params.access_token as string);
+        }
+        if (params.refresh_token) {
+          console.log('Got refresh_token from router params');
+          setRefreshToken(params.refresh_token as string);
+        }
+      } catch (error) {
+        console.error('Error parsing reset URL:', error);
+        setTokenError('Failed to parse reset link');
       }
     };
     getTokenFromUrl();
@@ -61,15 +100,27 @@ const ResetPasswordScreen = () => {
       return;
     }
 
+    if (!accessToken) {
+      Alert.alert('Error', 'Invalid reset link. Please request a new password reset.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Call your backend to update password with the access token
-      const params = new URLSearchParams({
+      console.log('Resetting password with access_token:', accessToken ? 'present' : 'missing');
+      console.log('Refresh token:', refreshToken ? 'present' : 'missing');
+      
+      // Call your backend to update password with the tokens
+      const queryParams = new URLSearchParams({
         new_password: newPassword,
-        access_token: accessToken || ''
+        access_token: accessToken
       });
       
-      const response = await fetch(`https://facultyapp-api.onrender.com/api/auth/update-password?${params.toString()}`, {
+      if (refreshToken) {
+        queryParams.append('refresh_token', refreshToken);
+      }
+      
+      const response = await fetch(`https://facultyapp-api.onrender.com/api/auth/update-password?${queryParams.toString()}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'

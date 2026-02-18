@@ -11,22 +11,44 @@ const RootLayout = () => {
   // Handle deep links for auth callbacks
   const handleDeepLink = (url: string) => {
     console.log('Deep link received:', url);
-    const parsedUrl = Linking.parse(url);
     
-    // Handle password reset redirect
-    if (url.includes('reset-password') || parsedUrl.path === 'reset-password') {
-      // Extract token from URL (Supabase adds it as hash fragment or query param)
-      const accessToken = parsedUrl.queryParams?.access_token;
-      const type = parsedUrl.queryParams?.type;
-      
-      if (type === 'recovery' || accessToken) {
-        router.replace({
-          pathname: '/reset-password' as any,
-          params: { access_token: accessToken || '' }
-        });
-      } else {
-        router.replace('/reset-password' as any);
-      }
+    // Supabase sends tokens in hash fragment: #access_token=xxx&refresh_token=yyy&type=recovery
+    let accessToken: string | null = null;
+    let refreshToken: string | null = null;
+    let type: string | null = null;
+    
+    // Parse hash fragment (after #)
+    const hashIndex = url.indexOf('#');
+    if (hashIndex !== -1) {
+      const hashParams = new URLSearchParams(url.substring(hashIndex + 1));
+      accessToken = hashParams.get('access_token');
+      refreshToken = hashParams.get('refresh_token');
+      type = hashParams.get('type');
+      console.log('Hash params - type:', type, 'access_token:', accessToken ? 'found' : 'none');
+    }
+    
+    // Also check query params via Linking.parse
+    const parsedUrl = Linking.parse(url);
+    if (!accessToken && parsedUrl.queryParams?.access_token) {
+      accessToken = parsedUrl.queryParams.access_token as string;
+    }
+    if (!refreshToken && parsedUrl.queryParams?.refresh_token) {
+      refreshToken = parsedUrl.queryParams.refresh_token as string;
+    }
+    if (!type && parsedUrl.queryParams?.type) {
+      type = parsedUrl.queryParams.type as string;
+    }
+    
+    // Handle password reset redirect (type=recovery)
+    if (type === 'recovery' || url.includes('reset-password') || parsedUrl.path === 'reset-password') {
+      console.log('Navigating to reset-password with tokens');
+      router.replace({
+        pathname: '/reset-password' as any,
+        params: { 
+          access_token: accessToken || '',
+          refresh_token: refreshToken || ''
+        }
+      });
     }
     // Handle email confirmation
     else if (url.includes('confirm') || parsedUrl.path === 'confirm') {
