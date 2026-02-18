@@ -383,36 +383,69 @@ async def forgot_password(email: str):
 
 
 @router.post("/update-password")
-async def update_password(new_password: str, access_token: str):
+async def update_password(new_password: str, access_token: str, refresh_token: str = None):
     """
     Update user's password using the access token from the reset link.
     """
     supabase = get_supabase()
 
     try:
-        # Set the session with the access token from the reset link
-        # Then update the password
-        supabase.auth.set_session(access_token, access_token)
+        print(f"[AUTH] Attempting password update with token: {access_token[:20]}...")
         
-        # Update the user's password
-        response = supabase.auth.update_user({
-            "password": new_password
-        })
+        # Method 1: Try to get user with the access token first to verify it's valid
+        try:
+            user_response = supabase.auth.get_user(access_token)
+            if user_response.user:
+                print(f"[AUTH] Token valid for user: {user_response.user.email}")
+        except Exception as e:
+            print(f"[AUTH] Token validation failed: {e}")
+        
+        # Method 2: Set session and update password
+        # The recovery flow provides an access_token that can be used directly
+        if refresh_token:
+            supabase.auth.set_session(access_token, refresh_token)
+        else:
+            # For recovery tokens, we need to use the admin API or exchange the token
+            # Try using the token directly with the Supabase REST API
+            import httpx
+            import os
+            
+            supabase_url = os.getenv("SUPABASE_URL")
+            
+            # Call Supabase Auth API directly to update password
+            async with httpx.AsyncClient() as client:
+                response = await client.put(
+                    f"{supabase_url}/auth/v1/user",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "apikey": os.getenv("SUPABASE_KEY"),
+                        "Content-Type": "application/json"
+                    },
+                    json={"password": new_password}
+                )
+                
+                print(f"[AUTH] Password update response: {response.status_code}")
+                
+                if response.status_code == 200:
+                    return {"message": "Password updated successfully"}
+                else:
+                    error_data = response.json()
+                    print(f"[AUTH] Password update error: {error_data}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=error_data.get("message", "Failed to update password")
+                    )
 
-        if response.user is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to update password"
-            )
-
-        return {"message": "Password updated successfully"}
-
+    except HTTPException:
+        raise
     except AuthApiError as e:
+        print(f"[AUTH] AuthApiError: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
+        print(f"[AUTH] Exception: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update password: {str(e)}"

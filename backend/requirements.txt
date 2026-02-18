@@ -6,3 +6,4 @@ gotrue
 pydantic[email]
 python-multipart
 exponent-server-sdk
+httpx
