@@ -83,7 +83,7 @@ export const resetPassword = async (email: string) => {
 
 // Requests APIs
 export const getPendingRequests = async () => {
-  const response = await fetch(`${API_BASE_URL}/requests/`);
+  const response = await fetch(`${API_BASE_URL}/requests`);
   
   if (!response.ok) {
     throw new Error('Failed to fetch requests');
@@ -93,7 +93,7 @@ export const getPendingRequests = async () => {
 };
 
 export const getTeacherRequests = async (teacherId: number) => {
-  const response = await fetch(`${API_BASE_URL}/requests/teacher/${teacherId}/`);
+  const response = await fetch(`${API_BASE_URL}/requests/teacher/${teacherId}`);
   
   if (!response.ok) {
     throw new Error('Failed to fetch teacher requests');
@@ -121,7 +121,7 @@ export const createRequest = async (data: {
   classroom: string;
   notes?: string;
 }) => {
-  const response = await fetch(`${API_BASE_URL}/requests/`, {
+  const response = await fetch(`${API_BASE_URL}/requests`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -136,7 +136,7 @@ export const createRequest = async (data: {
 };
 
 export const acceptRequest = async (requestId: number, teacherId: number) => {
-  const response = await fetch(`${API_BASE_URL}/requests/${requestId}/accept/`, {
+  const response = await fetch(`${API_BASE_URL}/requests/${requestId}/accept`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teacher_id: teacherId }),
@@ -151,7 +151,7 @@ export const acceptRequest = async (requestId: number, teacherId: number) => {
 };
 
 export const cancelRequest = async (requestId: number, teacherId: number) => {
-  const response = await fetch(`${API_BASE_URL}/requests/${requestId}/cancel/`, {
+  const response = await fetch(`${API_BASE_URL}/requests/${requestId}/cancel`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teacher_id: teacherId }),
@@ -167,7 +167,7 @@ export const cancelRequest = async (requestId: number, teacherId: number) => {
 
 // Users APIs
 export const getUsers = async () => {
-  const response = await fetch(`${API_BASE_URL}/users/`);
+  const response = await fetch(`${API_BASE_URL}/users`);
   
   if (!response.ok) {
     throw new Error('Failed to fetch users');
@@ -177,7 +177,7 @@ export const getUsers = async () => {
 };
 
 export const getUser = async (userId: number) => {
-  const response = await fetch(`${API_BASE_URL}/users/${userId}/`);
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`);
   
   if (!response.ok) {
     throw new Error('Failed to fetch user');
@@ -188,7 +188,8 @@ export const getUser = async (userId: number) => {
 
 // Update user's push notification token
 export const updatePushToken = async (userId: number, pushToken: string) => {
-  const response = await fetch(`${API_BASE_URL}/users/${userId}/push-token/`, {
+  console.log(`Updating push token for user ${userId}: ${pushToken}`);
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/push-token`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ push_token: pushToken }),
@@ -196,10 +197,13 @@ export const updatePushToken = async (userId: number, pushToken: string) => {
   
   if (!response.ok) {
     const error = await response.json();
+    console.error('Failed to update push token:', error);
     throw new Error(error.detail || 'Failed to update push token');
   }
   
-  return response.json();
+  const result = await response.json();
+  console.log('Push token updated successfully:', result);
+  return result;
 };
 
 // Update user profile
@@ -208,7 +212,7 @@ export const updateUser = async (userId: number, data: {
   department?: string;
   phone?: string;
 }) => {
-  const response = await fetch(`${API_BASE_URL}/users/${userId}/`, {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),

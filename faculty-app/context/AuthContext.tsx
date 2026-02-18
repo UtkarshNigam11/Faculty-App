@@ -38,6 +38,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const parsed = JSON.parse(storedUser);
         console.log('AuthContext: Parsed user:', parsed);
         setUser(parsed);
+        
+        // Re-register push token for existing users on app launch
+        // This ensures token is always up-to-date in backend
+        registerForPushNotifications(parsed.id);
       }
     } catch (error) {
       console.error('Error loading stored user:', error);
@@ -76,20 +80,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       // Initialize notifications first
       const notifications = await import('../services/notifications');
+      
+      // Check if we're in Expo Go
+      if (notifications.isRunningInExpoGo()) {
+        console.log('AuthContext: Running in Expo Go - push notifications disabled');
+        console.log('AuthContext: Build APK with EAS to enable push notifications');
+        return;
+      }
+      
       await notifications.initializeNotifications();
       
       console.log('AuthContext: Registering for push notifications...');
       const pushToken = await notifications.registerForPushNotificationsAsync();
       
       if (pushToken) {
-        console.log('AuthContext: Got push token, saving to backend...');
-        await updatePushToken(userId, pushToken);
-        await AsyncStorage.setItem('pushToken', pushToken);
-        console.log('AuthContext: Push token saved successfully');
+        console.log('AuthContext: Got push token:', pushToken);
+        console.log('AuthContext: Saving to backend for user ID:', userId);
+        
+        try {
+          await updatePushToken(userId, pushToken);
+          await AsyncStorage.setItem('pushToken', pushToken);
+          console.log('AuthContext: Push token saved successfully to backend and local storage');
+        } catch (apiError) {
+          console.error('AuthContext: Failed to save push token to backend:', apiError);
+        }
+      } else {
+        console.log('AuthContext: No push token received (permissions denied or error)');
       }
     } catch (error) {
       // Don't fail login if push notification registration fails
-      console.error('AuthContext: Push notification registration failed:', error);
+      console.error('AuthContext: Push notification registration error:', error);
     }
   };
 
