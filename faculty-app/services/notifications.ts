@@ -1,68 +1,47 @@
 import { Platform } from 'react-native';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
-// Check if we're running in Expo Go - notifications are NOT supported there
-const isExpoGo = Constants.appOwnership === 'expo';
-
-// Flag to track initialization
-let notificationsInitialized = false;
+// EAS Project ID from app.json
+const PROJECT_ID = Constants.expoConfig?.extra?.eas?.projectId || 'ed1e64f3-437b-4909-b789-f85fdc03f788';
 
 /**
- * Initialize notification modules - DISABLED IN EXPO GO
+ * Initialize notification handler
  */
-export async function initializeNotifications(): Promise<void> {
-  if (notificationsInitialized) return;
-  notificationsInitialized = true;
-  
+export function initializeNotifications(): void {
   if (Platform.OS === 'web') {
-    console.log('Notifications: Not supported on web');
+    console.log('[Notifications] Not supported on web');
     return;
   }
 
-  if (isExpoGo) {
-    console.log('Notifications: Disabled in Expo Go (requires development build)');
-    console.log('To enable notifications, run: npx expo run:android');
-    return;
-  }
-
-  // Only import expo-notifications in development builds
-  try {
-    const Notifications = require('expo-notifications');
-    
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
-    
-    console.log('Notifications: Initialized successfully');
-  } catch (error) {
-    console.log('Notifications: Setup failed:', error);
-  }
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+  
+  console.log('[Notifications] Handler initialized');
 }
 
 /**
- * Register for push notifications - DISABLED IN EXPO GO
+ * Register for push notifications and get the Expo push token
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
-  if (Platform.OS === 'web' || isExpoGo) {
-    console.log('Push notifications not available (Expo Go or web)');
+  if (Platform.OS === 'web') {
+    console.log('[Notifications] Push not supported on web');
+    return null;
+  }
+
+  // Must be a physical device
+  if (!Device.isDevice) {
+    console.log('[Notifications] Push notifications require a physical device');
     return null;
   }
 
   try {
-    const Notifications = require('expo-notifications');
-    const Device = require('expo-device');
-
-    if (!Device.isDevice) {
-      console.log('Push notifications require a physical device');
-      return null;
-    }
-
     // Set up Android notification channel
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('substitute-requests', {
@@ -71,98 +50,89 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#1E3A5F',
         sound: 'default',
-        description: 'Notifications for new substitute requests',
+        description: 'Notifications for substitute requests',
       });
+      console.log('[Notifications] Android channel created');
     }
 
+    // Check/request permissions
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
     if (existingStatus !== 'granted') {
+      console.log('[Notifications] Requesting permission...');
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Push notification permission not granted');
+      console.log('[Notifications] Permission denied');
       return null;
     }
 
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: projectId,
+    console.log('[Notifications] Permission granted, getting token...');
+    console.log('[Notifications] Using projectId:', PROJECT_ID);
+
+    // Get the Expo push token
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({
+      projectId: PROJECT_ID,
     });
     
-    console.log('Expo Push Token:', tokenData.data);
-    return tokenData.data;
+    const token = tokenResponse.data;
+    console.log('[Notifications] Got push token:', token);
+    
+    return token;
   } catch (error) {
-    console.error('Error getting push token:', error);
+    console.error('[Notifications] Error getting push token:', error);
     return null;
   }
 }
 
 /**
- * Add a listener for notifications received while app is foregrounded
+ * Add listener for notifications received while app is in foreground
  */
 export function addNotificationReceivedListener(
-  callback: (notification: any) => void
-): { remove: () => void } {
-  if (Platform.OS === 'web' || isExpoGo) {
-    return { remove: () => {} };
-  }
-
-  try {
-    const Notifications = require('expo-notifications');
-    return Notifications.addNotificationReceivedListener(callback);
-  } catch {
-    return { remove: () => {} };
-  }
+  callback: (notification: Notifications.Notification) => void
+): Notifications.EventSubscription {
+  return Notifications.addNotificationReceivedListener(callback);
 }
 
 /**
- * Add a listener for when user taps on a notification
+ * Add listener for when user taps on a notification
  */
 export function addNotificationResponseListener(
-  callback: (response: any) => void
-): { remove: () => void } {
-  if (Platform.OS === 'web' || isExpoGo) {
-    return { remove: () => {} };
-  }
-
-  try {
-    const Notifications = require('expo-notifications');
-    return Notifications.addNotificationResponseReceivedListener(callback);
-  } catch {
-    return { remove: () => {} };
-  }
+  callback: (response: Notifications.NotificationResponse) => void
+): Notifications.EventSubscription {
+  return Notifications.addNotificationResponseReceivedListener(callback);
 }
 
 /**
- * Schedule a local notification - DISABLED IN EXPO GO
+ * Schedule a local notification immediately
  */
 export async function scheduleLocalNotification(
   title: string,
   body: string,
   data?: Record<string, unknown>
-): Promise<void> {
-  if (Platform.OS === 'web' || isExpoGo) {
-    console.log('Local notification (simulated):', title, '-', body);
-    return;
+): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    console.log('[Notifications] Local notification (simulated):', title);
+    return null;
   }
 
   try {
-    const Notifications = require('expo-notifications');
-    await Notifications.scheduleNotificationAsync({
+    const id = await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: data || {},
         sound: 'default',
       },
-      trigger: null,
+      trigger: null, // Immediately
     });
+    return id;
   } catch (error) {
-    console.log('Failed to schedule notification:', error);
+    console.error('[Notifications] Failed to schedule notification:', error);
+    return null;
   }
 }
 
@@ -170,13 +140,12 @@ export async function scheduleLocalNotification(
  * Clear all delivered notifications
  */
 export async function clearAllNotifications(): Promise<void> {
-  if (Platform.OS === 'web' || isExpoGo) return;
-
+  if (Platform.OS === 'web') return;
+  
   try {
-    const Notifications = require('expo-notifications');
     await Notifications.dismissAllNotificationsAsync();
   } catch (error) {
-    console.log('Failed to clear notifications:', error);
+    console.error('[Notifications] Failed to clear notifications:', error);
   }
 }
 
@@ -184,10 +153,9 @@ export async function clearAllNotifications(): Promise<void> {
  * Get badge count
  */
 export async function getBadgeCount(): Promise<number> {
-  if (Platform.OS === 'web' || isExpoGo) return 0;
-
+  if (Platform.OS === 'web') return 0;
+  
   try {
-    const Notifications = require('expo-notifications');
     return await Notifications.getBadgeCountAsync();
   } catch {
     return 0;
@@ -198,19 +166,18 @@ export async function getBadgeCount(): Promise<number> {
  * Set badge count
  */
 export async function setBadgeCount(count: number): Promise<void> {
-  if (Platform.OS === 'web' || isExpoGo) return;
-
+  if (Platform.OS === 'web') return;
+  
   try {
-    const Notifications = require('expo-notifications');
     await Notifications.setBadgeCountAsync(count);
   } catch (error) {
-    console.log('Failed to set badge count:', error);
+    console.error('[Notifications] Failed to set badge:', error);
   }
 }
 
 /**
- * Check if running in Expo Go
+ * Check if running in Expo Go (for informational purposes)
  */
 export function isRunningInExpoGo(): boolean {
-  return isExpoGo;
+  return Constants.appOwnership === 'expo';
 }

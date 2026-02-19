@@ -11,7 +11,6 @@ router = APIRouter()
 async def get_all_users():
     """
     Get all registered faculty users.
-    Returns users ordered by name.
     """
     supabase = get_supabase()
     
@@ -21,18 +20,17 @@ async def get_all_users():
             .order("name")\
             .execute()
         
-        users = []
-        for user in result.data:
-            users.append(UserResponse(
+        return [
+            UserResponse(
                 id=user["id"],
                 name=user["name"],
                 email=user["email"],
                 department=user.get("department"),
                 phone=user.get("phone"),
                 created_at=user.get("created_at")
-            ))
-        
-        return users
+            )
+            for user in result.data
+        ]
         
     except Exception as e:
         raise HTTPException(
@@ -54,7 +52,7 @@ async def get_user(user_id: int):
             .eq("id", user_id)\
             .execute()
         
-        if not result.data or len(result.data) == 0:
+        if not result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
@@ -83,23 +81,10 @@ async def get_user(user_id: int):
 async def update_user(user_id: int, user_update: UserUpdate):
     """
     Update user profile information.
-    Only name, department, and phone can be updated.
     """
     supabase = get_supabase()
     
     try:
-        # Check if user exists
-        check_result = supabase.table("users")\
-            .select("id")\
-            .eq("id", user_id)\
-            .execute()
-        
-        if not check_result.data or len(check_result.data) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
         # Build update data (only non-None fields)
         update_data = {}
         if user_update.name is not None:
@@ -115,16 +100,15 @@ async def update_user(user_id: int, user_update: UserUpdate):
                 detail="No fields to update"
             )
         
-        # Update user
         result = supabase.table("users")\
             .update(update_data)\
             .eq("id", user_id)\
             .execute()
         
-        if not result.data or len(result.data) == 0:
+        if not result.data:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update user"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
             )
         
         user = result.data[0]
@@ -154,42 +138,36 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
     """
     supabase = get_supabase()
     
-    print(f"[PUSH-TOKEN] Updating push token for user {user_id}")
-    print(f"[PUSH-TOKEN] Token: {token_update.push_token[:30] if token_update.push_token else 'None'}...")
+    push_token = token_update.push_token
+    
+    # Validate token format
+    if not push_token or not push_token.startswith("ExponentPushToken"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid push token format. Must start with 'ExponentPushToken'"
+        )
+    
+    print(f"[PUSH-TOKEN] Saving token for user {user_id}: {push_token[:35]}...")
     
     try:
-        # Check if user exists
-        check_result = supabase.table("users")\
-            .select("id")\
+        result = supabase.table("users")\
+            .update({"push_token": push_token})\
             .eq("id", user_id)\
             .execute()
         
-        if not check_result.data or len(check_result.data) == 0:
-            print(f"[PUSH-TOKEN] User {user_id} not found")
+        if not result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
-        # Update push token
-        result = supabase.table("users")\
-            .update({"push_token": token_update.push_token})\
-            .eq("id", user_id)\
-            .execute()
-        
-        if not result.data or len(result.data) == 0:
-            print(f"[PUSH-TOKEN] Failed to update token for user {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update push token"
-            )
-        
-        print(f"[PUSH-TOKEN] Successfully updated token for user {user_id}")
-        return {"message": "Push token updated successfully"}
+        print(f"[PUSH-TOKEN] Saved successfully for user {user_id}")
+        return {"message": "Push token updated successfully", "user_id": user_id}
         
     except HTTPException:
         raise
     except Exception as e:
+        print(f"[PUSH-TOKEN] Error saving token: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update push token: {str(e)}"
@@ -200,24 +178,21 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
 async def delete_user(user_id: int):
     """
     Delete a user account.
-    Warning: This will also delete all associated substitute requests.
     """
     supabase = get_supabase()
     
     try:
-        # Check if user exists
         check_result = supabase.table("users")\
             .select("id")\
             .eq("id", user_id)\
             .execute()
         
-        if not check_result.data or len(check_result.data) == 0:
+        if not check_result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
-        # Delete user (cascade will handle related requests)
         supabase.table("users").delete().eq("id", user_id).execute()
         
         return {"message": "User deleted successfully"}

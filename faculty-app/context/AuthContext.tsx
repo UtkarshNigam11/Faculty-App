@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { updatePushToken } from '../services/api';
+import * as notifications from '../services/notifications';
 
 interface User {
   id: number;
@@ -26,90 +27,84 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Initialize notifications when app starts
+    notifications.initializeNotifications();
     loadStoredUser();
   }, []);
 
   const loadStoredUser = async () => {
     try {
-      console.log('AuthContext: Loading stored user...');
+      console.log('[Auth] Loading stored user...');
       const storedUser = await AsyncStorage.getItem('user');
-      console.log('AuthContext: Stored user found:', storedUser ? 'yes' : 'no');
+      
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
-        console.log('AuthContext: Parsed user:', parsed);
+        console.log('[Auth] Found stored user:', parsed.name);
         setUser(parsed);
         
-        // Re-register push token for existing users on app launch
-        // This ensures token is always up-to-date in backend
-        registerForPushNotifications(parsed.id);
+        // Re-register push token on app launch
+        await registerPushToken(parsed.id);
+      } else {
+        console.log('[Auth] No stored user found');
       }
     } catch (error) {
-      console.error('Error loading stored user:', error);
+      console.error('[Auth] Error loading stored user:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const login = async (userData: User, token?: string) => {
-    console.log('AuthContext: Login called with user:', userData);
-    try {
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      console.log('AuthContext: User saved to storage');
-      if (token) {
-        await AsyncStorage.setItem('token', token);
-        console.log('AuthContext: Token saved to storage');
-      }
-      setUser(userData);
-      console.log('AuthContext: User state updated');
-      
-      // Register for push notifications after login
-      registerForPushNotifications(userData.id);
-    } catch (error) {
-      console.error('AuthContext: Error saving user:', error);
-      throw error;
-    }
-  };
-
-  const registerForPushNotifications = async (userId: number) => {
-    // Skip on web platform
+  const registerPushToken = async (userId: number) => {
     if (Platform.OS === 'web') {
-      console.log('AuthContext: Push notifications not supported on web');
+      console.log('[Auth] Push notifications not supported on web');
       return;
     }
-    
+
     try {
-      // Initialize notifications first
-      const notifications = await import('../services/notifications');
+      console.log('[Auth] Registering push notifications for user:', userId);
       
-      // Check if we're in Expo Go
+      // Check if running in Expo Go
       if (notifications.isRunningInExpoGo()) {
-        console.log('AuthContext: Running in Expo Go - push notifications disabled');
-        console.log('AuthContext: Build APK with EAS to enable push notifications');
-        return;
+        console.log('[Auth] Running in Expo Go - push notifications may not work');
+        console.log('[Auth] For full push support, build with: eas build --profile development --platform android');
       }
       
-      await notifications.initializeNotifications();
-      
-      console.log('AuthContext: Registering for push notifications...');
       const pushToken = await notifications.registerForPushNotificationsAsync();
       
       if (pushToken) {
-        console.log('AuthContext: Got push token:', pushToken);
-        console.log('AuthContext: Saving to backend for user ID:', userId);
+        console.log('[Auth] Got push token:', pushToken);
         
+        // Save to backend
         try {
           await updatePushToken(userId, pushToken);
           await AsyncStorage.setItem('pushToken', pushToken);
-          console.log('AuthContext: Push token saved successfully to backend and local storage');
+          console.log('[Auth] Push token saved to backend successfully');
         } catch (apiError) {
-          console.error('AuthContext: Failed to save push token to backend:', apiError);
+          console.error('[Auth] Failed to save push token to backend:', apiError);
         }
       } else {
-        console.log('AuthContext: No push token received (permissions denied or error)');
+        console.log('[Auth] No push token received');
       }
     } catch (error) {
-      // Don't fail login if push notification registration fails
-      console.error('AuthContext: Push notification registration error:', error);
+      console.error('[Auth] Push registration error:', error);
+    }
+  };
+
+  const login = async (userData: User, token?: string) => {
+    console.log('[Auth] Login:', userData.name);
+    
+    try {
+      await AsyncStorage.setItem('user', JSON.stringify(userData));
+      if (token) {
+        await AsyncStorage.setItem('token', token);
+      }
+      setUser(userData);
+      
+      // Register for push notifications after login
+      await registerPushToken(userData.id);
+    } catch (error) {
+      console.error('[Auth] Error saving user:', error);
+      throw error;
     }
   };
 
@@ -122,10 +117,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
+    console.log('[Auth] Logging out');
     setUser(null);
-    await AsyncStorage.removeItem('user');
-    await AsyncStorage.removeItem('token');
-    await AsyncStorage.removeItem('pushToken');
+    await AsyncStorage.multiRemove(['user', 'token', 'pushToken']);
   };
 
   return (
