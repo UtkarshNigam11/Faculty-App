@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   Text, 
   View, 
@@ -8,11 +8,18 @@ import {
   StatusBar,
   ScrollView,
   RefreshControl,
+  Platform,
+  Alert,
 } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
-import { getTeacherRequests, getPendingRequests } from '../services/api';
+import { getTeacherRequests, getPendingRequests, updatePushToken } from '../services/api';
+
+const PROJECT_ID = 'ed1e64f3-437b-4909-b789-f85fdc03f788';
 
 const HomeScreen = () => {
   const router = useRouter();
@@ -20,6 +27,70 @@ const HomeScreen = () => {
   const [pendingCount, setPendingCount] = useState(0);
   const [availableCount, setAvailableCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const pushRegistered = useRef(false);
+
+  // Register push notifications when home screen loads
+  useEffect(() => {
+    if (user && !pushRegistered.current) {
+      pushRegistered.current = true;
+      registerPushNotifications();
+    }
+  }, [user]);
+
+  const registerPushNotifications = async () => {
+    if (Platform.OS === 'web' || !user) return;
+
+    try {
+      // Check if already registered
+      const existingToken = await AsyncStorage.getItem('pushToken');
+      if (existingToken) {
+        console.log('Push token already exists:', existingToken.substring(0, 30));
+        return;
+      }
+
+      // Check device
+      if (!Device.isDevice) {
+        console.log('Not a physical device');
+        return;
+      }
+
+      // Setup Android channel
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('substitute-requests', {
+          name: 'Substitute Requests',
+          importance: Notifications.AndroidImportance.MAX,
+        });
+      }
+
+      // Get permissions
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        Alert.alert('Notifications', 'Please enable notifications in settings to receive updates.');
+        return;
+      }
+
+      // Get token
+      const tokenResponse = await Notifications.getExpoPushTokenAsync({
+        projectId: PROJECT_ID,
+      });
+      const token = tokenResponse.data;
+
+      // Save to backend
+      await updatePushToken(user.id, token);
+      await AsyncStorage.setItem('pushToken', token);
+      
+      console.log('Push token registered successfully:', token.substring(0, 30));
+    } catch (error: any) {
+      console.log('Push notification error:', error.message);
+    }
+  };
 
   const fetchCounts = useCallback(async () => {
     if (!user) return;
