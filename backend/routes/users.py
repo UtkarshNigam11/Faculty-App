@@ -134,20 +134,64 @@ async def update_user(user_id: int, user_update: UserUpdate):
 async def update_push_token(user_id: int, token_update: PushTokenUpdate):
     """
     Update the push notification token for a user.
-    Called from mobile app when registering for push notifications.
+    Send JSON body: {"push_token": "ExponentPushToken[xxx]"}
     """
     supabase = get_supabase()
     
-    push_token = token_update.push_token
+    token = token_update.push_token
     
-    # Validate token format
-    if not push_token or not push_token.startswith("ExponentPushToken"):
+    print(f"[PUSH-TOKEN] Received for user {user_id}: {token}")
+    
+    if not token or len(token) < 10:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid push token format. Must start with 'ExponentPushToken'"
+            detail="Push token cannot be empty"
         )
     
-    print(f"[PUSH-TOKEN] Saving token for user {user_id}: {push_token[:35]}...")
+    try:
+        result = supabase.table("users")\
+            .update({"push_token": token})\
+            .eq("id", user_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        print(f"[PUSH-TOKEN] Saved for user {user_id}: {token[:40]}...")
+        return {
+            "message": "Push token updated successfully", 
+            "user_id": user_id,
+            "token_preview": token[:40] + "..."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[PUSH-TOKEN] Error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update push token: {str(e)}"
+        )
+
+
+@router.post("/{user_id}/push-token")
+async def set_push_token_simple(user_id: int, push_token: str):
+    """
+    Simple endpoint to set push token via query parameter.
+    Example: POST /api/users/1/push-token?push_token=ExponentPushToken[xxx]
+    """
+    supabase = get_supabase()
+    
+    print(f"[PUSH-TOKEN] POST received for user {user_id}: {push_token}")
+    
+    if not push_token or len(push_token) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Push token cannot be empty"
+        )
     
     try:
         result = supabase.table("users")\
@@ -161,13 +205,17 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
                 detail="User not found"
             )
         
-        print(f"[PUSH-TOKEN] Saved successfully for user {user_id}")
-        return {"message": "Push token updated successfully", "user_id": user_id}
+        print(f"[PUSH-TOKEN] Saved for user {user_id}: {push_token[:40]}...")
+        return {
+            "message": "Push token updated successfully", 
+            "user_id": user_id,
+            "token_preview": push_token[:40] + "..."
+        }
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[PUSH-TOKEN] Error saving token: {e}")
+        print(f"[PUSH-TOKEN] Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update push token: {str(e)}"

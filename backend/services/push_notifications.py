@@ -19,13 +19,10 @@ def send_push_notification(push_token: str, title: str, body: str, data: dict = 
         print(f"[PUSH] No push token provided")
         return None
     
-    # Validate token format
-    if not push_token.startswith("ExponentPushToken"):
-        print(f"[PUSH] Invalid token format: {push_token[:30]}...")
-        return None
-    
     try:
-        print(f"[PUSH] Sending notification: {title}")
+        print(f"[PUSH] Sending to token: {push_token[:40]}...")
+        print(f"[PUSH] Title: {title}")
+        
         response = push_client.publish(
             PushMessage(
                 to=push_token,
@@ -37,17 +34,18 @@ def send_push_notification(push_token: str, title: str, body: str, data: dict = 
                 channel_id="substitute-requests",
             )
         )
-        print(f"[PUSH] Sent successfully to {push_token[:30]}...")
+        print(f"[PUSH] Response: {response}")
         return response
     except DeviceNotRegisteredError:
-        print(f"[PUSH] Device not registered - token may be expired")
-        # Could optionally remove invalid token from database here
+        print(f"[PUSH] Device not registered - token may be expired: {push_token[:30]}...")
         return None
     except PushServerError as e:
         print(f"[PUSH] Server error: {e}")
         return None
     except Exception as e:
-        print(f"[PUSH] Error: {e}")
+        print(f"[PUSH] Error sending notification: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -56,8 +54,8 @@ def send_push_to_multiple(push_tokens: list, title: str, body: str, data: dict =
     if not push_tokens:
         return []
     
-    # Filter valid tokens
-    valid_tokens = [t for t in push_tokens if t and t.startswith("ExponentPushToken")]
+    # Filter non-empty tokens
+    valid_tokens = [t for t in push_tokens if t and len(t) > 10]
     
     if not valid_tokens:
         print(f"[PUSH] No valid tokens in list of {len(push_tokens)}")
@@ -77,12 +75,15 @@ def send_push_to_multiple(push_tokens: list, title: str, body: str, data: dict =
     ]
     
     try:
-        print(f"[PUSH] Sending to {len(messages)} devices: {title}")
+        print(f"[PUSH] Sending to {len(messages)} devices")
+        print(f"[PUSH] Title: {title}")
         responses = push_client.publish_multiple(messages)
-        print(f"[PUSH] Sent {len(responses)} notifications")
+        print(f"[PUSH] Sent {len(responses)} notifications successfully")
         return responses
     except Exception as e:
         print(f"[PUSH] Batch send error: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
@@ -94,28 +95,34 @@ async def notify_all_faculty_except(exclude_user_id: int, title: str, body: str,
     supabase = get_supabase()
     
     try:
-        # Get all users except the creator who have push tokens
+        # Get all users except the creator
         result = supabase.table("users")\
             .select("id, name, push_token")\
             .neq("id", exclude_user_id)\
             .execute()
         
-        # Filter users with valid push tokens
+        print(f"[PUSH] Checking {len(result.data)} users for push tokens...")
+        
+        # Collect tokens from users who have them
         tokens = []
         for user in result.data:
             token = user.get("push_token")
-            if token and token.startswith("ExponentPushToken"):
+            if token and len(token) > 10:
                 tokens.append(token)
-                print(f"[PUSH] Will notify: {user['name']} (ID: {user['id']})")
+                print(f"[PUSH] Will notify: {user['name']} (ID: {user['id']}) - Token: {token[:30]}...")
+            else:
+                print(f"[PUSH] Skipping: {user['name']} (ID: {user['id']}) - No token")
         
         if tokens:
-            print(f"[PUSH] Notifying {len(tokens)} faculty members")
+            print(f"[PUSH] Sending to {len(tokens)} faculty members")
             send_push_to_multiple(tokens, title, body, data)
         else:
-            print(f"[PUSH] No faculty with push tokens to notify (checked {len(result.data)} users)")
+            print(f"[PUSH] No faculty with push tokens to notify")
             
     except Exception as e:
         print(f"[PUSH] Error in notify_all_faculty_except: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 async def notify_user(user_id: int, title: str, body: str, data: dict = None):
@@ -138,11 +145,14 @@ async def notify_user(user_id: int, title: str, body: str, data: dict = None):
         user = result.data[0]
         token = user.get("push_token")
         
-        if token and token.startswith("ExponentPushToken"):
+        if token and len(token) > 10:
             print(f"[PUSH] Notifying user: {user['name']} (ID: {user_id})")
+            print(f"[PUSH] Token: {token[:30]}...")
             send_push_notification(token, title, body, data)
         else:
-            print(f"[PUSH] User {user['name']} has no push token registered")
+            print(f"[PUSH] User {user['name']} (ID: {user_id}) has no push token")
             
     except Exception as e:
         print(f"[PUSH] Error in notify_user: {e}")
+        import traceback
+        traceback.print_exc()
