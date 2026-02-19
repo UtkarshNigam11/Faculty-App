@@ -14,8 +14,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { login as apiLogin } from '../services/api';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { login as apiLogin, updatePushToken } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+// Hardcode projectId as fallback - Constants.expoConfig can be null in production builds
+const PROJECT_ID = 'ed1e64f3-437b-4909-b789-f85fdc03f788';
 
 const LoginScreen = () => {
   const router = useRouter();
@@ -24,6 +30,81 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const registerPushNotifications = async (userId: number): Promise<boolean> => {
+    // Step 1: Check device
+    const isDevice = Device.isDevice;
+    const deviceBrand = Device.brand;
+    
+    if (!isDevice) {
+      Alert.alert('Debug Step 1', `Not a physical device. Brand: ${deviceBrand}`);
+      return false;
+    }
+
+    // Step 2: Setup Android channel
+    if (Platform.OS === 'android') {
+      try {
+        await Notifications.setNotificationChannelAsync('substitute-requests', {
+          name: 'Substitute Requests',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#1E3A5F',
+        });
+      } catch (channelError: any) {
+        Alert.alert('Debug Step 2', `Channel error: ${channelError.message}`);
+        return false;
+      }
+    }
+
+    // Step 3: Check permissions
+    let permStatus;
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      permStatus = status;
+    } catch (permError: any) {
+      Alert.alert('Debug Step 3a', `Permission check error: ${permError.message}`);
+      return false;
+    }
+
+    // Step 4: Request permissions if needed
+    if (permStatus !== 'granted') {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        permStatus = status;
+      } catch (reqError: any) {
+        Alert.alert('Debug Step 4', `Permission request error: ${reqError.message}`);
+        return false;
+      }
+    }
+
+    if (permStatus !== 'granted') {
+      Alert.alert('Debug Step 4b', `Permission denied. Status: ${permStatus}`);
+      return false;
+    }
+
+    // Step 5: Get Expo Push Token
+    let token: string;
+    try {
+      const tokenResponse = await Notifications.getExpoPushTokenAsync({
+        projectId: PROJECT_ID,
+      });
+      token = tokenResponse.data;
+      Alert.alert('Debug Step 5', `Token received: ${token.substring(0, 50)}...`);
+    } catch (tokenError: any) {
+      Alert.alert('Debug Step 5 ERROR', `Token error: ${tokenError.message}\n\nThis usually means the app was not built correctly with EAS or projectId is wrong.`);
+      return false;
+    }
+
+    // Step 6: Save to backend
+    try {
+      const result = await updatePushToken(userId, token);
+      Alert.alert('Success!', `Push token saved!\n\nUser: ${userId}\nToken: ${token.substring(0, 30)}...`);
+      return true;
+    } catch (apiError: any) {
+      Alert.alert('Debug Step 6 ERROR', `Backend error: ${apiError.message}`);
+      return false;
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -41,8 +122,22 @@ const LoginScreen = () => {
       const response = await apiLogin(username, password);
       
       if (response && response.user) {
+        // Save user to context (without push registration - we do it here)
         await login(response.user, response.access_token);
-        router.replace('/');
+        
+        // Register push notifications - with full debugging
+        const pushSuccess = await registerPushNotifications(response.user.id);
+        
+        if (!pushSuccess) {
+          // Still continue to home even if push fails
+          Alert.alert(
+            'Push Notifications',
+            'Could not enable push notifications. You can still use the app.',
+            [{ text: 'OK', onPress: () => router.replace('/') }]
+          );
+        } else {
+          router.replace('/');
+        }
       } else {
         Alert.alert('Error', 'Invalid response from server');
       }
@@ -242,11 +337,6 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     padding: 4,
-  },
-  eyeText: {
-    fontSize: 14,
-    color: '#10B981',
-    fontWeight: '600',
   },
   loginButton: {
     backgroundColor: '#10B981',
