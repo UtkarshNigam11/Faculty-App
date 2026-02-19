@@ -457,54 +457,75 @@ async def update_password(new_password: str, access_token: str, refresh_token: s
     """
     Update user's password using the access token from the reset link.
     """
-    supabase = get_supabase()
+    import httpx
+    
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
     try:
-        print(f"[AUTH] Attempting password update with token: {access_token[:20]}...")
+        print(f"[AUTH] Attempting password update with token: {access_token[:30]}...")
         
-        # Method 1: Try to get user with the access token first to verify it's valid
+        # Validate the token first
+        supabase = get_supabase()
         try:
             user_response = supabase.auth.get_user(access_token)
             if user_response.user:
                 print(f"[AUTH] Token valid for user: {user_response.user.email}")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token"
+                )
         except Exception as e:
             print(f"[AUTH] Token validation failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired reset token. Please request a new password reset."
+            )
         
-        # Method 2: Set session and update password
-        # The recovery flow provides an access_token that can be used directly
-        if refresh_token:
-            supabase.auth.set_session(access_token, refresh_token)
-        else:
-            # For recovery tokens, we need to use the admin API or exchange the token
-            # Try using the token directly with the Supabase REST API
-            import httpx
-            import os
+        # Use Supabase REST API directly to update password
+        # This is the most reliable method for recovery tokens
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{supabase_url}/auth/v1/user",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "apikey": supabase_key,
+                    "Content-Type": "application/json"
+                },
+                json={"password": new_password}
+            )
             
-            supabase_url = os.getenv("SUPABASE_URL")
+            print(f"[AUTH] Password update response status: {response.status_code}")
+            print(f"[AUTH] Password update response body: {response.text}")
             
-            # Call Supabase Auth API directly to update password
-            async with httpx.AsyncClient() as client:
-                response = await client.put(
-                    f"{supabase_url}/auth/v1/user",
-                    headers={
-                        "Authorization": f"Bearer {access_token}",
-                        "apikey": os.getenv("SUPABASE_KEY"),
-                        "Content-Type": "application/json"
-                    },
-                    json={"password": new_password}
-                )
+            if response.status_code == 200:
+                result = response.json()
+                print(f"[AUTH] Password updated successfully for user: {result.get('email', 'unknown')}")
                 
-                print(f"[AUTH] Password update response: {response.status_code}")
-                
-                if response.status_code == 200:
-                    return {"message": "Password updated successfully"}
-                else:
-                    error_data = response.json()
-                    print(f"[AUTH] Password update error: {error_data}")
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=error_data.get("message", "Failed to update password")
+                # Sign out all sessions to force re-login with new password
+                try:
+                    await client.post(
+                        f"{supabase_url}/auth/v1/logout",
+                        headers={
+                            "Authorization": f"Bearer {access_token}",
+                            "apikey": supabase_key,
+                        },
+                        params={"scope": "global"}
                     )
+                    print("[AUTH] All sessions signed out")
+                except Exception as logout_error:
+                    print(f"[AUTH] Logout error (non-critical): {logout_error}")
+                
+                return {"message": "Password updated successfully. Please login with your new password."}
+            else:
+                error_data = response.json() if response.text else {}
+                error_msg = error_data.get("message", error_data.get("error_description", "Failed to update password"))
+                print(f"[AUTH] Password update error: {error_data}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_msg
+                )
 
     except HTTPException:
         raise
