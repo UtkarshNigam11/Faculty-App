@@ -61,6 +61,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      console.log('[Push] Starting push token registration for user:', userId);
+
+      // Preflight backend reachability/status check so we always see a log hit on server.
+      try {
+        const preStatus = await getPushTokenStatus(userId);
+        console.log('[Push] Preflight token status:', preStatus);
+      } catch (preflightError) {
+        console.warn('[Push] Preflight status check failed:', preflightError);
+      }
+
       const pushToken = await registerForPushNotificationsAsync();
       
       if (pushToken) {
@@ -74,7 +84,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Also save locally
         await AsyncStorage.setItem('pushToken', pushToken);
       } else {
-        console.warn('[Push] No token generated. Check notification permission and build type.');
+        console.warn('[Push] No token generated. Check notification permission, FCM credentials, and build type.');
+
+        // Run one more status call for visibility in Render logs and confirmation.
+        try {
+          const postStatus = await getPushTokenStatus(userId);
+          console.log('[Push] Status after failed token generation:', postStatus);
+        } catch (statusError) {
+          console.warn('[Push] Post-failure status check failed:', statusError);
+        }
       }
     } catch (error) {
       console.error('Push token registration error:', error);

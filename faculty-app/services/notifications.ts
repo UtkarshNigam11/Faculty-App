@@ -87,16 +87,22 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
 
-    // Get the Expo push token
-    const tokenResponse = await Notifications.getExpoPushTokenAsync({
-      projectId: PROJECT_ID,
-    });
+    // Get the Expo push token with timeout to avoid silent hangs on some devices.
+    const tokenResponse = await Promise.race([
+      Notifications.getExpoPushTokenAsync({
+        projectId: PROJECT_ID,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timed out while requesting Expo push token')), 15000)
+      ),
+    ]);
 
     console.log('[Notifications] Expo push token generated:', tokenResponse.data);
 
     return tokenResponse.data;
   } catch (error) {
     console.error('[Notifications] Error getting push token:', error);
+    console.error('[Notifications] Common causes: denied notification permission, missing Android FCM credentials, or wrong EAS projectId');
     return null;
   }
 }
