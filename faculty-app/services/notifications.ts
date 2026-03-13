@@ -13,6 +13,8 @@ function isExpoGo(): boolean {
   return Constants.executionEnvironment === 'storeClient';
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Initialize notification handler - call this once when app starts
  */
@@ -87,19 +89,28 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
 
-    // Get the Expo push token with timeout to avoid silent hangs on some devices.
-    const tokenResponse = await Promise.race([
-      Notifications.getExpoPushTokenAsync({
-        projectId: PROJECT_ID,
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timed out while requesting Expo push token')), 15000)
-      ),
-    ]);
+    // Token generation can intermittently fail on Android devices; retry a few times.
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        console.log(`[Notifications] Requesting Expo push token (attempt ${attempt}/3)`);
+        const tokenResponse = await Notifications.getExpoPushTokenAsync({
+          projectId: PROJECT_ID,
+        });
 
-    console.log('[Notifications] Expo push token generated:', tokenResponse.data);
+        console.log('[Notifications] Expo push token generated:', tokenResponse.data);
+        return tokenResponse.data;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[Notifications] Token request attempt ${attempt} failed:`, error);
+        if (attempt < 3) {
+          await sleep(1200 * attempt);
+        }
+      }
+    }
 
-    return tokenResponse.data;
+    console.error('[Notifications] Failed to get Expo push token after 3 attempts:', lastError);
+    return null;
   } catch (error) {
     console.error('[Notifications] Error getting push token:', error);
     console.error('[Notifications] Common causes: denied notification permission, missing Android FCM credentials, or wrong EAS projectId');
