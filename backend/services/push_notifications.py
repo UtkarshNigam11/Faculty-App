@@ -11,12 +11,18 @@ import os
 push_client = PushClient()
 
 
+def _is_valid_expo_push_token(token: str) -> bool:
+    if not token:
+        return False
+    return token.startswith("ExponentPushToken[") or token.startswith("ExpoPushToken[")
+
+
 def send_push_notification(push_token: str, title: str, body: str, data: dict = None):
     """
     Send a push notification to a single device.
     """
-    if not push_token:
-        print(f"[PUSH] No push token provided")
+    if not _is_valid_expo_push_token(push_token):
+        print(f"[PUSH] Invalid or missing Expo push token: {push_token}")
         return None
     
     try:
@@ -55,7 +61,7 @@ def send_push_to_multiple(push_tokens: list, title: str, body: str, data: dict =
         return []
     
     # Filter non-empty tokens
-    valid_tokens = [t for t in push_tokens if t and len(t) > 10]
+    valid_tokens = [t for t in push_tokens if _is_valid_expo_push_token(t)]
     
     if not valid_tokens:
         print(f"[PUSH] No valid tokens in list of {len(push_tokens)}")
@@ -107,7 +113,7 @@ async def notify_all_faculty_except(exclude_user_id: int, title: str, body: str,
         tokens = []
         for user in result.data:
             token = user.get("push_token")
-            if token and len(token) > 10:
+            if _is_valid_expo_push_token(token):
                 tokens.append(token)
                 print(f"[PUSH] Will notify: {user['name']} (ID: {user['id']}) - Token: {token[:30]}...")
             else:
@@ -145,7 +151,7 @@ async def notify_user(user_id: int, title: str, body: str, data: dict = None):
         user = result.data[0]
         token = user.get("push_token")
         
-        if token and len(token) > 10:
+        if _is_valid_expo_push_token(token):
             print(f"[PUSH] Notifying user: {user['name']} (ID: {user_id})")
             print(f"[PUSH] Token: {token[:30]}...")
             send_push_notification(token, title, body, data)

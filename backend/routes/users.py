@@ -7,6 +7,12 @@ from models import UserResponse, UserUpdate, PushTokenUpdate
 router = APIRouter()
 
 
+def _is_valid_expo_push_token(token: str) -> bool:
+    if not token:
+        return False
+    return token.startswith("ExponentPushToken[") or token.startswith("ExpoPushToken[")
+
+
 @router.get("/", response_model=List[UserResponse])
 async def get_all_users():
     """
@@ -142,10 +148,10 @@ async def update_push_token(user_id: int, token_update: PushTokenUpdate):
     
     print(f"[PUSH-TOKEN] Received for user {user_id}: {token}")
     
-    if not token or len(token) < 10:
+    if not _is_valid_expo_push_token(token):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Push token cannot be empty"
+            detail="Invalid Expo push token format"
         )
     
     try:
@@ -187,10 +193,10 @@ async def set_push_token_simple(user_id: int, push_token: str):
     
     print(f"[PUSH-TOKEN] POST received for user {user_id}: {push_token}")
     
-    if not push_token or len(push_token) < 10:
+    if not _is_valid_expo_push_token(push_token):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Push token cannot be empty"
+            detail="Invalid Expo push token format"
         )
     
     try:
@@ -219,6 +225,44 @@ async def set_push_token_simple(user_id: int, push_token: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update push token: {str(e)}"
+        )
+
+
+@router.get("/{user_id}/push-token/status")
+async def get_push_token_status(user_id: int):
+    """
+    Get push token registration status for a user.
+    Useful for debugging notification registration from the app.
+    """
+    supabase = get_supabase()
+
+    try:
+        result = supabase.table("users")\
+            .select("id, name, push_token")\
+            .eq("id", user_id)\
+            .execute()
+
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        user = result.data[0]
+        token = user.get("push_token")
+        return {
+            "user_id": user["id"],
+            "name": user.get("name"),
+            "has_push_token": bool(token),
+            "is_valid_expo_token": _is_valid_expo_push_token(token) if token else False,
+            "token_preview": f"{token[:40]}..." if token else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get push token status: {str(e)}"
         )
 
 

@@ -188,22 +188,49 @@ export const getUser = async (userId: number) => {
 
 // Update user's push notification token
 export const updatePushToken = async (userId: number, pushToken: string) => {
-  console.log(`Updating push token for user ${userId}: ${pushToken}`);
-  const response = await fetch(`${API_BASE_URL}/users/${userId}/push-token`, {
+  console.log(`[Push] Updating push token for user ${userId}: ${pushToken}`);
+
+  const putResponse = await fetch(`${API_BASE_URL}/users/${userId}/push-token`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ push_token: pushToken }),
   });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    console.error('Failed to update push token:', error);
-    throw new Error(error.detail || 'Failed to update push token');
+
+  if (putResponse.ok) {
+    const result = await putResponse.json();
+    console.log('[Push] Push token updated via PUT:', result);
+    return result;
   }
-  
-  const result = await response.json();
-  console.log('Push token updated successfully:', result);
-  return result;
+
+  let putErrorDetail = 'Failed to update push token';
+  try {
+    const errorJson = await putResponse.json();
+    putErrorDetail = errorJson?.detail || putErrorDetail;
+  } catch {
+    // ignore JSON parse errors
+  }
+
+  console.warn('[Push] PUT failed, retrying with POST query param endpoint:', putErrorDetail);
+
+  const postResponse = await fetch(
+    `${API_BASE_URL}/users/${userId}/push-token?push_token=${encodeURIComponent(pushToken)}`,
+    { method: 'POST' }
+  );
+
+  if (!postResponse.ok) {
+    let postErrorDetail = 'Failed to update push token';
+    try {
+      const postErrorJson = await postResponse.json();
+      postErrorDetail = postErrorJson?.detail || postErrorDetail;
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new Error(postErrorDetail);
+  }
+
+  const postResult = await postResponse.json();
+  console.log('[Push] Push token updated via POST fallback:', postResult);
+  return postResult;
 };
 
 // Update user profile

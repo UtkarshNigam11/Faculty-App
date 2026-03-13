@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import { updatePushToken } from '../services/api';
+import { initializeNotifications, registerForPushNotificationsAsync } from '../services/notifications';
 
 interface User {
   id: number;
@@ -26,15 +27,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize notification handler on app start
+    // Initialize notifications on app start
     if (Platform.OS !== 'web') {
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-        }),
-      });
+      initializeNotifications();
     }
     loadStoredUser();
   }, []);
@@ -45,11 +40,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
         setUser(parsed);
+        // Register push token for returning user
+        registerPushToken(parsed.id);
       }
     } catch (error) {
       console.error('Error loading stored user:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const registerPushToken = async (userId: number) => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+
+    if (!userId) {
+      console.warn('[Push] registerPushToken called without a valid userId');
+      return;
+    }
+
+    try {
+      const pushToken = await registerForPushNotificationsAsync();
+      
+      if (pushToken) {
+        // Save token to backend
+        await updatePushToken(userId, pushToken);
+        // Also save locally
+        await AsyncStorage.setItem('pushToken', pushToken);
+      }
+    } catch (error) {
+      console.error('Push token registration error:', error);
     }
   };
 
@@ -60,6 +81,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await AsyncStorage.setItem('token', token);
       }
       setUser(userData);
+
+      
+      // Register for push notifications after login
+      await registerPushToken(userData.id);
     } catch (error) {
       console.error('Login error:', error);
       throw error;
