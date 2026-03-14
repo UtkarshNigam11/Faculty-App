@@ -14,23 +14,27 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getPendingRequests, acceptRequest } from '../services/api';
+import { getPendingRequests, acceptRequest, SubstituteRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-type Request = {
-  id: number;
-  teacher_id: number;
-  teacher_name?: string;
-  subject: string;
-  date: string;
-  time: string;
-  duration: number;
-  classroom: string;
-  status: string;
-  notes?: string;
-};
+type Request = SubstituteRequest;
 
 type FilterTab = 'all' | 'today' | 'tomorrow' | 'urgent';
+
+const getRequestTitle = (request: Request) => {
+  if (request.request_type === 'exam') {
+    return 'Exam Substitute';
+  }
+  return request.subject || 'Class Substitute';
+};
+
+const getLocationLabel = (request: Request) => {
+  return request.request_type === 'exam' ? 'Campus' : 'Room';
+};
+
+const getLocationValue = (request: Request) => {
+  return request.request_type === 'exam' ? request.campus || 'Campus TBD' : request.classroom || 'Room TBD';
+};
 
 const ViewRequestsScreen = () => {
   const router = useRouter();
@@ -81,10 +85,12 @@ const ViewRequestsScreen = () => {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
+      const teacherName = req.teacher_name?.toLowerCase() || '';
       const matchesSearch = 
-        req.subject.toLowerCase().includes(query) ||
-        req.classroom.toLowerCase().includes(query) ||
-        req.teacher_name?.toLowerCase().includes(query);
+        getRequestTitle(req).toLowerCase().includes(query) ||
+        getLocationValue(req).toLowerCase().includes(query) ||
+        req.request_type.toLowerCase().includes(query) ||
+        teacherName.includes(query);
       if (!matchesSearch) return false;
     }
 
@@ -147,17 +153,17 @@ const ViewRequestsScreen = () => {
     });
   };
 
-  const handleAccept = (requestId: number, subject: string) => {
+  const handleAccept = (request: Request) => {
     Alert.alert(
       'Accept Request',
-      `Are you sure you want to substitute for "${subject}"?`,
+      `Are you sure you want to accept this ${getRequestTitle(request).toLowerCase()} request?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Accept',
           onPress: async () => {
             try {
-              await acceptRequest(requestId, user!.id);
+              await acceptRequest(request.id, user!.id);
               Alert.alert('Success', 'You have accepted this substitute request!');
               fetchRequests(); // Refresh the list
             } catch (error: any) {
@@ -194,7 +200,10 @@ const ViewRequestsScreen = () => {
 
       <View style={styles.cardBody}>
         <View style={styles.detailRow}>
-          <Text style={styles.subjectText}>{item.subject}</Text>
+          <Text style={styles.subjectText}>{getRequestTitle(item)}</Text>
+          <View style={styles.requestTypeBadge}>
+            <Text style={styles.requestTypeText}>{item.request_type === 'exam' ? 'Exam' : 'Class'}</Text>
+          </View>
         </View>
 
         <View style={styles.detailsGrid}>
@@ -210,15 +219,15 @@ const ViewRequestsScreen = () => {
           </View>
           <View style={styles.detailItem}>
             <Ionicons name="location-outline" size={14} color="#6B7280" />
-            <Text style={styles.detailLabel}>Room</Text>
-            <Text style={styles.detailValue}>{item.classroom}</Text>
+            <Text style={styles.detailLabel}>{getLocationLabel(item)}</Text>
+            <Text style={styles.detailValue}>{getLocationValue(item)}</Text>
           </View>
         </View>
       </View>
 
       <TouchableOpacity 
         style={styles.acceptButton}
-        onPress={() => handleAccept(item.id, item.subject)}
+        onPress={() => handleAccept(item)}
         activeOpacity={0.8}
       >
         <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
@@ -269,7 +278,7 @@ const ViewRequestsScreen = () => {
           <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 10 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by subject, room, faculty..."
+            placeholder="Search by title, campus or faculty..."
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -512,7 +521,19 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  requestTypeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#ECFDF5',
+  },
+  requestTypeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
   },
   detailIcon: {
     fontSize: 16,

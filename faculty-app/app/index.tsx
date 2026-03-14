@@ -26,6 +26,7 @@ const HomeScreen = () => {
   const { user, isLoading } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [availableCount, setAvailableCount] = useState(0);
+  const [myPendingCount, setMyPendingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pushRegistered = useRef(false);
 
@@ -101,8 +102,12 @@ const HomeScreen = () => {
       ]);
       
       const myPending = myRequests.filter((r: any) => r.status === 'pending').length;
-      setPendingCount(myPending);
-      setAvailableCount(pendingRequests.length);
+      const pendingFromOthers = pendingRequests.filter((r: any) => r.teacher_id !== user.id).length;
+
+      // Dashboard counters should represent requests available in the pool, excluding self-created requests.
+      setPendingCount(pendingFromOthers);
+      setAvailableCount(pendingFromOthers);
+      setMyPendingCount(myPending);
     } catch (error) {
       console.log('Error fetching counts:', error);
     }
@@ -201,9 +206,9 @@ const HomeScreen = () => {
             <Text style={styles.actionTitle}>My Requests</Text>
             <Text style={styles.actionSubtitle}>Track status of submitted requests</Text>
           </View>
-          {pendingCount > 0 && (
+          {myPendingCount > 0 && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{pendingCount} Pending</Text>
+              <Text style={styles.badgeText}>{myPendingCount} Pending</Text>
             </View>
           )}
         </TouchableOpacity>

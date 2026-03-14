@@ -30,11 +30,13 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS substitute_requests (
     id SERIAL PRIMARY KEY,
     teacher_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    subject VARCHAR(100) NOT NULL,
+    request_type VARCHAR(20) DEFAULT 'class',
+    subject VARCHAR(100),
     date DATE NOT NULL,
     time VARCHAR(20) NOT NULL,
     duration INTEGER NOT NULL,
-    classroom VARCHAR(50) NOT NULL,
+    classroom VARCHAR(50),
+    campus VARCHAR(100),
     notes TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     accepted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -67,6 +69,23 @@ BEGIN
                    WHERE table_name = 'users' AND column_name = 'push_token') THEN
         ALTER TABLE users ADD COLUMN push_token VARCHAR(255);
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'substitute_requests' AND column_name = 'request_type') THEN
+        ALTER TABLE substitute_requests ADD COLUMN request_type VARCHAR(20) DEFAULT 'class';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'substitute_requests' AND column_name = 'campus') THEN
+        ALTER TABLE substitute_requests ADD COLUMN campus VARCHAR(100);
+    END IF;
+
+    ALTER TABLE substitute_requests ALTER COLUMN subject DROP NOT NULL;
+    ALTER TABLE substitute_requests ALTER COLUMN classroom DROP NOT NULL;
+
+    UPDATE substitute_requests
+    SET request_type = COALESCE(request_type, 'class')
+    WHERE request_type IS NULL;
     
     -- Make password column nullable (Supabase Auth handles passwords now)
     ALTER TABLE users ALTER COLUMN password DROP NOT NULL;

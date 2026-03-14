@@ -20,6 +20,7 @@ const RegisterScreen = () => {
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
@@ -28,8 +29,14 @@ const RegisterScreen = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleRegister = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    if (!name.trim() || !email.trim() || !phone.trim() || !password.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    const normalizedPhone = phone.replace(/\D/g, '');
+    if (normalizedPhone.length < 10) {
+      Alert.alert('Error', 'Please enter a valid phone number');
       return;
     }
 
@@ -59,6 +66,7 @@ const RegisterScreen = () => {
         username,
         password,
         name: name.trim(),
+        phone: normalizedPhone,
       });
       
       Alert.alert(
@@ -128,6 +136,21 @@ const RegisterScreen = () => {
                 />
               </View>
               <Text style={styles.hint}>Must be a valid @kiit.ac.in address</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>PHONE NUMBER</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 9876543210"
+                  placeholderTextColor="#9CA3AF"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                />
+              </View>
             </View>
 
             <View style={styles.inputGroup}>

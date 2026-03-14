@@ -13,23 +13,26 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getAcceptedRequests } from '../services/api';
+import { getAcceptedRequests, SubstituteRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-type Request = {
-  id: number;
-  teacher_id: number;
-  teacher_name?: string;
-  teacher_email?: string;
-  teacher_department?: string;
-  teacher_phone?: string;
-  subject: string;
-  date: string;
-  time: string;
-  duration: number;
-  classroom: string;
-  status: string;
-  notes?: string;
+type Request = SubstituteRequest;
+
+const getRequestTitle = (request: Request) => {
+  if (request.request_type === 'exam') {
+    return 'Exam Substitute';
+  }
+  return request.subject || 'Class Substitute';
+};
+
+const getLocationValue = (request: Request) => {
+  return request.request_type === 'exam' ? request.campus || 'Campus TBD' : request.classroom || 'Room TBD';
+};
+
+const openWhatsApp = (phone: string, message: string) => {
+  const normalizedPhone = phone.replace(/[^\d]/g, '');
+  const encodedMessage = encodeURIComponent(message);
+  Linking.openURL(`https://wa.me/${normalizedPhone}?text=${encodedMessage}`);
 };
 
 const AcceptedRequestsScreen = () => {
@@ -133,7 +136,12 @@ const AcceptedRequestsScreen = () => {
         </TouchableOpacity>
 
         {/* Subject */}
-        <Text style={styles.subjectText}>{item.subject}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.subjectText}>{getRequestTitle(item)}</Text>
+          <View style={styles.requestTypeBadge}>
+            <Text style={styles.requestTypeText}>{item.request_type === 'exam' ? 'Exam' : 'Class'}</Text>
+          </View>
+        </View>
 
         {/* Class Details */}
         <View style={styles.detailsRow}>
@@ -147,7 +155,7 @@ const AcceptedRequestsScreen = () => {
           </View>
           <View style={styles.detailItem}>
             <Ionicons name="location-outline" size={14} color="#6B7280" />
-            <Text style={styles.detailText}>{item.classroom}</Text>
+            <Text style={styles.detailText}>{getLocationValue(item)}</Text>
           </View>
         </View>
 
@@ -192,6 +200,16 @@ const AcceptedRequestsScreen = () => {
                   >
                     <Ionicons name="call-outline" size={18} color="#10B981" />
                     <Text style={styles.contactButtonText}>Call</Text>
+                  </TouchableOpacity>
+                )}
+                {item.teacher_phone && (
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={() => openWhatsApp(item.teacher_phone!, `Hi ${item.teacher_name || 'Professor'}, I accepted the ${getRequestTitle(item).toLowerCase()} for ${formatDate(item.date)} at ${item.time}.`)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="logo-whatsapp" size={18} color="#10B981" />
+                    <Text style={styles.contactButtonText}>WhatsApp</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -416,7 +434,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: '#1F2937',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 12,
+  },
+  requestTypeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#ECFDF5',
+  },
+  requestTypeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
   },
   detailsRow: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from typing import Literal, Optional
 from datetime import datetime, date
 
 
@@ -74,12 +74,26 @@ class VerifyOTPRequest(BaseModel):
 
 # Substitute Request Models
 class SubstituteRequestBase(BaseModel):
-    subject: str
+    request_type: Literal["class", "exam"] = "class"
+    subject: Optional[str] = None
     date: date
     time: str
     duration: int  # in minutes
-    classroom: str
+    classroom: Optional[str] = None
+    campus: Optional[str] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_request_fields(self):
+        if self.request_type == "class":
+            if not self.subject or not self.subject.strip():
+                raise ValueError("Subject is required for class substitutes")
+            if not self.classroom or not self.classroom.strip():
+                raise ValueError("Room number is required for class substitutes")
+        else:
+            if not self.campus or not self.campus.strip():
+                raise ValueError("Campus is required for exam substitutes")
+        return self
 
 
 class SubstituteRequestCreate(SubstituteRequestBase):
@@ -107,11 +121,13 @@ class SubstituteRequestResponse(SubstituteRequestBase):
 
 
 class SubstituteRequestUpdate(BaseModel):
+    request_type: Optional[Literal["class", "exam"]] = None
     subject: Optional[str] = None
     date: Optional[date] = None
     time: Optional[str] = None
     duration: Optional[int] = None
     classroom: Optional[str] = None
+    campus: Optional[str] = None
     notes: Optional[str] = None
 
 

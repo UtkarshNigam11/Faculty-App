@@ -1,100 +1,197 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Text,
-  View,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   SafeAreaView,
+  ScrollView,
   StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { createRequest } from '../services/api';
+import { createRequest, getRequest, SubstituteRequestType, updateRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+const REQUEST_TYPES: Array<{
+  value: SubstituteRequestType;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  {
+    value: 'class',
+    title: 'Class Substitute',
+    subtitle: 'Subject, room, date and time',
+    icon: 'book-outline',
+  },
+  {
+    value: 'exam',
+    title: 'Exam Substitute',
+    subtitle: 'Campus, date and time',
+    icon: 'document-text-outline',
+  },
+];
 
 const RequestSubstituteScreen = () => {
   const router = useRouter();
+  const { requestId } = useLocalSearchParams<{ requestId?: string }>();
   const { user } = useAuth();
+
+  const parsedRequestId = requestId ? Number(requestId) : null;
+  const isEditing = Boolean(parsedRequestId);
+
+  const [requestType, setRequestType] = useState<SubstituteRequestType>('class');
   const [subject, setSubject] = useState('');
   const [classroom, setClassroom] = useState('');
+  const [campus, setCampus] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(new Date());
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(isEditing);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
+  useEffect(() => {
+    const loadRequest = async () => {
+      if (!parsedRequestId || !user) {
+        setIsFetching(false);
+        return;
+      }
+
+      try {
+        const existingRequest = await getRequest(parsedRequestId);
+
+        if (existingRequest.teacher_id !== user.id) {
+          Alert.alert('Error', 'You can only edit your own request.');
+          router.back();
+          return;
+        }
+
+        setRequestType(existingRequest.request_type || 'class');
+        setSubject(existingRequest.subject || '');
+        setClassroom(existingRequest.classroom || '');
+        setCampus(existingRequest.campus || '');
+        setDate(new Date(existingRequest.date));
+        setTime(parseTimeString(existingRequest.time));
+        setNotes(existingRequest.notes || '');
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'Failed to load request details');
+        router.back();
+      } finally {
+        setIsFetching(false);
+      }
+    };
+
+    loadRequest();
+  }, [parsedRequestId, router, user]);
+
+  const formatDate = (value: Date) => {
+    return value.toLocaleDateString('en-US', {
       month: '2-digit',
       day: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
+  const formatTime = (value: Date) => {
+    return value.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
     });
+  };
+
+  const handleTypeChange = (nextType: SubstituteRequestType) => {
+    setRequestType(nextType);
+
+    if (nextType === 'class') {
+      setCampus('');
+    } else {
+      setSubject('');
+      setClassroom('');
+    }
   };
 
   const handleSubmit = async () => {
-    if (!subject.trim() || !classroom.trim()) {
-      Alert.alert('Error', 'Please fill in Subject and Room Number');
-      return;
-    }
-
     if (!user) {
       Alert.alert('Error', 'Please login again');
       return;
     }
 
+    if (requestType === 'class' && (!subject.trim() || !classroom.trim())) {
+      Alert.alert('Error', 'Please fill in subject and room number');
+      return;
+    }
+
+    if (requestType === 'exam' && !campus.trim()) {
+      Alert.alert('Error', 'Please enter the exam campus');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await createRequest({
-        teacher_id: user.id,
-        subject: subject.trim(),
+      const payload = {
+        request_type: requestType,
+        subject: requestType === 'class' ? subject.trim() : undefined,
         date: date.toISOString().split('T')[0],
         time: formatTime(time),
         duration: 60,
-        classroom: classroom.trim(),
+        classroom: requestType === 'class' ? classroom.trim() : undefined,
+        campus: requestType === 'exam' ? campus.trim() : undefined,
         notes: notes.trim() || undefined,
-      });
+      };
+
+      if (isEditing && parsedRequestId) {
+        await updateRequest(parsedRequestId, user.id, payload);
+      } else {
+        await createRequest({
+          teacher_id: user.id,
+          ...payload,
+        });
+      }
 
       Alert.alert(
         'Success',
-        'Your substitute request has been submitted!',
+        isEditing ? 'Your substitute request has been updated.' : 'Your substitute request has been submitted.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create request');
+      Alert.alert('Error', error.message || 'Failed to save request');
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (isFetching) {
+    return (
+      <SafeAreaView style={styles.loadingScreen}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <ActivityIndicator size="large" color="#10B981" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header */}
+
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Request Substitute</Text>
+        <Text style={styles.headerTitle}>{isEditing ? 'Update Request' : 'Request Substitute'}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -104,56 +201,97 @@ const RequestSubstituteScreen = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView 
+        <ScrollView
           style={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Class Details Section */}
-          <Text style={styles.sectionTitle}>CLASS DETAILS</Text>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Subject Name</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons name="book-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., CS-101 Data Structures"
-                placeholderTextColor="#9CA3AF"
-                value={subject}
-                onChangeText={setSubject}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Room Number</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons name="location-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., C-105"
-                placeholderTextColor="#9CA3AF"
-                value={classroom}
-                onChangeText={setClassroom}
-              />
-            </View>
+          <Text style={styles.sectionTitle}>REQUEST TYPE</Text>
+          <View style={styles.typeCardGrid}>
+            {REQUEST_TYPES.map((option) => {
+              const active = requestType === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[styles.typeCard, active && styles.typeCardActive]}
+                  onPress={() => handleTypeChange(option.value)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={option.icon}
+                    size={22}
+                    color={active ? '#10B981' : '#6B7280'}
+                  />
+                  <Text style={[styles.typeTitle, active && styles.typeTitleActive]}>{option.title}</Text>
+                  <Text style={styles.typeSubtitle}>{option.subtitle}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={styles.sectionDivider} />
 
-          {/* Schedule Section */}
+          <Text style={styles.sectionTitle}>{requestType === 'class' ? 'CLASS DETAILS' : 'EXAM DETAILS'}</Text>
+
+          {requestType === 'class' ? (
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Subject Name</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="book-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., CS-101 Data Structures"
+                    placeholderTextColor="#9CA3AF"
+                    value={subject}
+                    onChangeText={setSubject}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Room Number</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="location-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., C-105"
+                    placeholderTextColor="#9CA3AF"
+                    value={classroom}
+                    onChangeText={setClassroom}
+                  />
+                </View>
+              </View>
+            </>
+          ) : (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Campus</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="business-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Campus 6"
+                  placeholderTextColor="#9CA3AF"
+                  value={campus}
+                  onChangeText={setCampus}
+                />
+              </View>
+            </View>
+          )}
+
+          <View style={styles.sectionDivider} />
+
           <Text style={styles.sectionTitle}>SCHEDULE</Text>
 
           <View style={styles.dateTimeRow}>
             <View style={styles.dateTimeField}>
               <Text style={styles.label}>Date</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.dateTimeButton}
                 onPress={() => setShowDatePicker(true)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="calendar-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+                <Ionicons name="calendar-outline" size={18} color="#6B7280" style={styles.inlineIcon} />
                 <Text style={styles.dateTimeText}>{formatDate(date)}</Text>
                 <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
               </TouchableOpacity>
@@ -161,12 +299,12 @@ const RequestSubstituteScreen = () => {
 
             <View style={styles.dateTimeField}>
               <Text style={styles.label}>Time</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.dateTimeButton}
                 onPress={() => setShowTimePicker(true)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="time-outline" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+                <Ionicons name="time-outline" size={18} color="#6B7280" style={styles.inlineIcon} />
                 <Text style={styles.dateTimeText}>{formatTime(time)}</Text>
                 <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
               </TouchableOpacity>
@@ -179,7 +317,7 @@ const RequestSubstituteScreen = () => {
               mode="date"
               display="default"
               minimumDate={new Date()}
-              onChange={(event, selectedDate) => {
+              onChange={(_, selectedDate) => {
                 setShowDatePicker(false);
                 if (selectedDate) setDate(selectedDate);
               }}
@@ -191,7 +329,7 @@ const RequestSubstituteScreen = () => {
               value={time}
               mode="time"
               display="default"
-              onChange={(event, selectedTime) => {
+              onChange={(_, selectedTime) => {
                 setShowTimePicker(false);
                 if (selectedTime) setTime(selectedTime);
               }}
@@ -200,7 +338,6 @@ const RequestSubstituteScreen = () => {
 
           <View style={styles.sectionDivider} />
 
-          {/* Additional Info Section */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>ADDITIONAL INFO</Text>
             <Text style={styles.optionalText}>Optional</Text>
@@ -209,7 +346,11 @@ const RequestSubstituteScreen = () => {
           <View style={styles.textAreaContainer}>
             <TextInput
               style={styles.textArea}
-              placeholder="Any special instructions for the substitute..."
+              placeholder={
+                requestType === 'class'
+                  ? 'Any special instructions for the substitute...'
+                  : 'Any exam-related instructions to share...'
+              }
               placeholderTextColor="#9CA3AF"
               value={notes}
               onChangeText={setNotes}
@@ -219,22 +360,19 @@ const RequestSubstituteScreen = () => {
             />
           </View>
 
-          {/* Submit Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
             onPress={handleSubmit}
             disabled={isLoading}
             activeOpacity={0.8}
           >
             <Text style={styles.submitButtonText}>
-              {isLoading ? 'Submitting...' : 'Submit Request'}
+              {isLoading ? 'Saving...' : isEditing ? 'Update Request' : 'Submit Request'}
             </Text>
             {!isLoading && <Text style={styles.arrowIcon}>→</Text>}
           </TouchableOpacity>
 
-          <Text style={styles.disclaimer}>
-            By submitting, you agree to the faculty guidelines.
-          </Text>
+          <Text style={styles.disclaimer}>By submitting, you agree to the faculty guidelines.</Text>
 
           <View style={styles.bottomPadding} />
         </ScrollView>
@@ -243,11 +381,41 @@ const RequestSubstituteScreen = () => {
   );
 };
 
+const parseTimeString = (timeValue: string) => {
+  const result = new Date();
+  const timeParts = timeValue.match(/(\d+):(\d+)\s*(AM|PM)/i);
+
+  if (!timeParts) {
+    return result;
+  }
+
+  let hours = parseInt(timeParts[1], 10);
+  const minutes = parseInt(timeParts[2], 10);
+  const meridian = timeParts[3].toUpperCase();
+
+  if (meridian === 'PM' && hours !== 12) {
+    hours += 12;
+  }
+
+  if (meridian === 'AM' && hours === 12) {
+    hours = 0;
+  }
+
+  result.setHours(hours, minutes, 0, 0);
+  return result;
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     paddingTop: 20,
+  },
+  loadingScreen: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
@@ -261,11 +429,6 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: 32,
-    color: '#374151',
-    fontWeight: '300',
   },
   headerTitle: {
     fontSize: 18,
@@ -303,6 +466,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9CA3AF',
     marginBottom: 16,
+  },
+  typeCardGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  typeCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  typeCardActive: {
+    borderColor: '#10B981',
+    backgroundColor: '#ECFDF5',
+  },
+  typeTitle: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  typeTitleActive: {
+    color: '#065F46',
+  },
+  typeSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6B7280',
   },
   inputGroup: {
     marginBottom: 20,
@@ -354,12 +548,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 54,
   },
+  inlineIcon: {
+    marginRight: 8,
+  },
   dateTimeText: {
+    flex: 1,
     fontSize: 15,
     color: '#1F2937',
-  },
-  dateTimeIcon: {
-    fontSize: 18,
   },
   textAreaContainer: {
     backgroundColor: '#F9FAFB',
@@ -398,17 +593,19 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   arrowIcon: {
-    fontSize: 20,
+    fontSize: 22,
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   disclaimer: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    textAlign: 'center',
     marginTop: 16,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    color: '#6B7280',
   },
   bottomPadding: {
-    height: 40,
+    height: 32,
   },
 });
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from typing import List
 
 from database import get_supabase
@@ -12,6 +12,93 @@ from models import (
 from services.push_notifications import notify_all_faculty_except, notify_user
 
 router = APIRouter()
+
+
+def _request_title(request: dict) -> str:
+    if request.get("request_type") == "exam":
+        campus = request.get("campus") or "Campus"
+        return f"Exam Duty at {campus}"
+    return request.get("subject") or "Class Substitute"
+
+
+def _request_location(request: dict) -> str:
+    if request.get("request_type") == "exam":
+        return request.get("campus") or "Campus"
+    return request.get("classroom") or "TBD"
+
+
+def _request_summary(request: dict) -> str:
+    if request.get("request_type") == "exam":
+        return f"exam duty at {_request_location(request)} on {request['date']} at {request['time']}"
+    return f"{_request_title(request)} in {_request_location(request)} on {request['date']} at {request['time']}"
+
+
+def _build_response(req: dict, teacher: dict | None = None, acceptor: dict | None = None):
+    return SubstituteRequestResponse(
+        id=req["id"],
+        teacher_id=req["teacher_id"],
+        request_type=req.get("request_type") or "class",
+        subject=req.get("subject"),
+        date=req["date"],
+        time=req["time"],
+        duration=req["duration"],
+        classroom=req.get("classroom"),
+        campus=req.get("campus"),
+        notes=req.get("notes"),
+        status=req["status"],
+        accepted_by=req.get("accepted_by"),
+        created_at=req.get("created_at"),
+        updated_at=req.get("updated_at"),
+        teacher_name=teacher.get("name") if teacher else None,
+        teacher_email=teacher.get("email") if teacher else None,
+        teacher_department=teacher.get("department") if teacher else None,
+        teacher_phone=teacher.get("phone") if teacher else None,
+        acceptor_name=acceptor.get("name") if acceptor else None,
+        acceptor_email=acceptor.get("email") if acceptor else None,
+        acceptor_department=acceptor.get("department") if acceptor else None,
+        acceptor_phone=acceptor.get("phone") if acceptor else None,
+    )
+
+
+def _sanitize_request_fields(payload: dict) -> dict:
+    request_type = payload.get("request_type") or "class"
+    data = {
+        "request_type": request_type,
+        "subject": payload.get("subject", "") or None,
+        "date": str(payload["date"]) if payload.get("date") is not None else None,
+        "time": payload.get("time"),
+        "duration": payload.get("duration"),
+        "classroom": payload.get("classroom", "") or None,
+        "campus": payload.get("campus", "") or None,
+        "notes": payload.get("notes"),
+    }
+
+    if request_type == "class":
+        data["campus"] = None
+    else:
+        data["subject"] = None
+        data["classroom"] = None
+
+    return data
+
+
+def _validate_update_payload(existing_request: dict, update_payload: dict) -> dict:
+    merged = {
+        "request_type": update_payload.get("request_type") or existing_request.get("request_type") or "class",
+        "subject": update_payload.get("subject") if "subject" in update_payload else existing_request.get("subject"),
+        "date": update_payload.get("date") if "date" in update_payload else existing_request.get("date"),
+        "time": update_payload.get("time") if "time" in update_payload else existing_request.get("time"),
+        "duration": update_payload.get("duration") if "duration" in update_payload else existing_request.get("duration"),
+        "classroom": update_payload.get("classroom") if "classroom" in update_payload else existing_request.get("classroom"),
+        "campus": update_payload.get("campus") if "campus" in update_payload else existing_request.get("campus"),
+        "notes": update_payload.get("notes") if "notes" in update_payload else existing_request.get("notes"),
+    }
+
+    SubstituteRequestCreate(
+        teacher_id=existing_request["teacher_id"],
+        **merged,
+    )
+    return _sanitize_request_fields(merged)
 
 
 @router.get("/", response_model=List[SubstituteRequestResponse])
@@ -37,21 +124,7 @@ async def get_pending_requests():
             if req.get("users"):
                 teacher_name = req["users"].get("name")
             
-            requests_list.append(SubstituteRequestResponse(
-                id=req["id"],
-                teacher_id=req["teacher_id"],
-                subject=req["subject"],
-                date=req["date"],
-                time=req["time"],
-                duration=req["duration"],
-                classroom=req["classroom"],
-                notes=req.get("notes"),
-                status=req["status"],
-                accepted_by=req.get("accepted_by"),
-                created_at=req.get("created_at"),
-                updated_at=req.get("updated_at"),
-                teacher_name=teacher_name
-            ))
+            requests_list.append(_build_response(req, teacher={"name": teacher_name} if teacher_name else None))
         
         return requests_list
         
@@ -89,24 +162,15 @@ async def get_teacher_requests(teacher_id: int):
                 acceptor_department = req["acceptor"].get("department")
                 acceptor_phone = req["acceptor"].get("phone")
             
-            requests_list.append(SubstituteRequestResponse(
-                id=req["id"],
-                teacher_id=req["teacher_id"],
-                subject=req["subject"],
-                date=req["date"],
-                time=req["time"],
-                duration=req["duration"],
-                classroom=req["classroom"],
-                notes=req.get("notes"),
-                status=req["status"],
-                accepted_by=req.get("accepted_by"),
-                created_at=req.get("created_at"),
-                updated_at=req.get("updated_at"),
-                acceptor_name=acceptor_name,
-                acceptor_email=acceptor_email,
-                acceptor_department=acceptor_department,
-                acceptor_phone=acceptor_phone
-            ))
+            acceptor = None
+            if acceptor_name or acceptor_email or acceptor_department or acceptor_phone:
+                acceptor = {
+                    "name": acceptor_name,
+                    "email": acceptor_email,
+                    "department": acceptor_department,
+                    "phone": acceptor_phone,
+                }
+            requests_list.append(_build_response(req, acceptor=acceptor))
         
         return requests_list
         
@@ -145,24 +209,15 @@ async def get_accepted_requests(teacher_id: int):
                 teacher_department = req["teacher"].get("department")
                 teacher_phone = req["teacher"].get("phone")
             
-            requests_list.append(SubstituteRequestResponse(
-                id=req["id"],
-                teacher_id=req["teacher_id"],
-                subject=req["subject"],
-                date=req["date"],
-                time=req["time"],
-                duration=req["duration"],
-                classroom=req["classroom"],
-                notes=req.get("notes"),
-                status=req["status"],
-                accepted_by=req.get("accepted_by"),
-                created_at=req.get("created_at"),
-                updated_at=req.get("updated_at"),
-                teacher_name=teacher_name,
-                teacher_email=teacher_email,
-                teacher_department=teacher_department,
-                teacher_phone=teacher_phone
-            ))
+            teacher = None
+            if teacher_name or teacher_email or teacher_department or teacher_phone:
+                teacher = {
+                    "name": teacher_name,
+                    "email": teacher_email,
+                    "department": teacher_department,
+                    "phone": teacher_phone,
+                }
+            requests_list.append(_build_response(req, teacher=teacher))
         
         return requests_list
         
@@ -196,22 +251,10 @@ async def get_request(request_id: int):
         teacher_name = req["teacher"]["name"] if req.get("teacher") else None
         acceptor_name = req["acceptor"]["name"] if req.get("acceptor") else None
         
-        return SubstituteRequestResponse(
-            id=req["id"],
-            teacher_id=req["teacher_id"],
-            subject=req["subject"],
-            date=req["date"],
-            time=req["time"],
-            duration=req["duration"],
-            classroom=req["classroom"],
-            notes=req.get("notes"),
-            status=req["status"],
-            accepted_by=req.get("accepted_by"),
-            created_at=req.get("created_at"),
-            updated_at=req.get("updated_at"),
-            teacher_name=teacher_name,
-            acceptor_name=acceptor_name
-        )
+        teacher = {"name": teacher_name} if teacher_name else None
+        acceptor = {"name": acceptor_name} if acceptor_name else None
+
+        return _build_response(req, teacher=teacher, acceptor=acceptor)
         
     except HTTPException:
         raise
@@ -244,12 +287,7 @@ async def create_request(request: SubstituteRequestCreate):
         # Create request
         new_request = {
             "teacher_id": request.teacher_id,
-            "subject": request.subject,
-            "date": str(request.date),
-            "time": request.time,
-            "duration": request.duration,
-            "classroom": request.classroom,
-            "notes": request.notes,
+            **_sanitize_request_fields(request.model_dump()),
             "status": "pending"
         }
         
@@ -267,29 +305,16 @@ async def create_request(request: SubstituteRequestCreate):
         await notify_all_faculty_except(
             exclude_user_id=request.teacher_id,
             title="📚 New Substitute Request",
-            body=f"{teacher_name} needs a substitute for {request.subject} on {request.date} at {request.time}",
+            body=f"{teacher_name} needs a substitute for {_request_summary(new_request)}",
             data={
                 "type": "new_request",
                 "request_id": req["id"],
-                "subject": request.subject,
+                "request_type": req.get("request_type") or "class",
+                "subject": req.get("subject"),
             }
         )
-        
-        return SubstituteRequestResponse(
-            id=req["id"],
-            teacher_id=req["teacher_id"],
-            subject=req["subject"],
-            date=req["date"],
-            time=req["time"],
-            duration=req["duration"],
-            classroom=req["classroom"],
-            notes=req.get("notes"),
-            status=req["status"],
-            accepted_by=req.get("accepted_by"),
-            created_at=req.get("created_at"),
-            updated_at=req.get("updated_at"),
-            teacher_name=teacher_name
-        )
+
+        return _build_response(req, teacher={"name": teacher_name})
         
     except HTTPException:
         raise
@@ -363,28 +388,110 @@ async def accept_request(request_id: int, accept_data: AcceptRequest):
         await notify_user(
             user_id=original_request["teacher_id"],
             title="✅ Request Accepted!",
-            body=f"{acceptor_name} will cover your {req['subject']} class on {req['date']} at {req['time']}",
+            body=f"{acceptor_name} will cover your {_request_summary(req)}",
             data={
                 "type": "request_accepted",
                 "request_id": request_id,
             }
         )
-        
-        return SubstituteRequestResponse(
-            id=req["id"],
-            teacher_id=req["teacher_id"],
-            subject=req["subject"],
-            date=req["date"],
-            time=req["time"],
-            duration=req["duration"],
-            classroom=req["classroom"],
-            notes=req.get("notes"),
-            status=req["status"],
-            accepted_by=req.get("accepted_by"),
-            created_at=req.get("created_at"),
-            updated_at=req.get("updated_at"),
-            acceptor_name=acceptor_name
+
+        return _build_response(req, acceptor={"name": acceptor_name})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to accept request: {str(e)}"
         )
+
+
+@router.put("/{request_id}", response_model=SubstituteRequestResponse)
+async def update_request(
+    request_id: int,
+    request_update: SubstituteRequestUpdate,
+    teacher_id: int = Query(...),
+):
+    """
+    Update a substitute request (only by the teacher who created it).
+    """
+    supabase = get_supabase()
+
+    try:
+        check_result = supabase.table("substitute_requests")\
+            .select("*")\
+            .eq("id", request_id)\
+            .eq("teacher_id", teacher_id)\
+            .execute()
+
+        if not check_result.data or len(check_result.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Request not found or unauthorized"
+            )
+
+        original_request = check_result.data[0]
+        if original_request["status"] in ["cancelled", "completed"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only active requests can be updated"
+            )
+
+        update_data = request_update.model_dump(exclude_unset=True)
+        if not update_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No fields to update"
+            )
+
+        final_request_data = _validate_update_payload(original_request, update_data)
+
+        result = supabase.table("substitute_requests")\
+            .update({
+                **final_request_data,
+                "updated_at": "now()",
+            })\
+            .eq("id", request_id)\
+            .execute()
+
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update request"
+            )
+
+        req = result.data[0]
+
+        teacher_result = supabase.table("users")\
+            .select("id, name")\
+            .eq("id", teacher_id)\
+            .execute()
+        teacher_name = teacher_result.data[0]["name"] if teacher_result.data else "Faculty Member"
+
+        if original_request.get("accepted_by"):
+            await notify_user(
+                user_id=original_request["accepted_by"],
+                title="✏️ Request Updated",
+                body=f"{teacher_name} updated the substitute details for {_request_summary(req)}",
+                data={
+                    "type": "request_updated",
+                    "request_id": request_id,
+                    "target": "accepted",
+                }
+            )
+        else:
+            await notify_all_faculty_except(
+                exclude_user_id=teacher_id,
+                title="✏️ Substitute Request Updated",
+                body=f"{teacher_name} updated a request for {_request_summary(req)}",
+                data={
+                    "type": "request_updated",
+                    "request_id": request_id,
+                    "target": "available",
+                }
+            )
+
+        return _build_response(req, teacher={"name": teacher_name})
         
     except HTTPException:
         raise
@@ -440,27 +547,14 @@ async def cancel_request(request_id: int, cancel_data: CancelRequest):
             await notify_user(
                 user_id=original_request["accepted_by"],
                 title="❌ Request Cancelled",
-                body=f"The substitute request for {req['subject']} on {req['date']} has been cancelled",
+                body=f"The substitute request for {_request_summary(req)} has been cancelled",
                 data={
                     "type": "request_cancelled",
                     "request_id": request_id,
                 }
             )
-        
-        return SubstituteRequestResponse(
-            id=req["id"],
-            teacher_id=req["teacher_id"],
-            subject=req["subject"],
-            date=req["date"],
-            time=req["time"],
-            duration=req["duration"],
-            classroom=req["classroom"],
-            notes=req.get("notes"),
-            status=req["status"],
-            accepted_by=req.get("accepted_by"),
-            created_at=req.get("created_at"),
-            updated_at=req.get("updated_at")
-        )
+
+        return _build_response(req)
         
     except HTTPException:
         raise

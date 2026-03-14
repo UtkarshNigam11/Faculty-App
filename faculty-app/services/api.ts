@@ -11,6 +11,51 @@ const API_BASE_URL = 'https://faculty-app-j8ct.onrender.com/api';
 
 console.log('API URL:', API_BASE_URL); // Debug log
 
+export type SubstituteRequestType = 'class' | 'exam';
+
+export type SubstituteRequest = {
+  id: number;
+  teacher_id: number;
+  request_type: SubstituteRequestType;
+  subject?: string | null;
+  date: string;
+  time: string;
+  duration: number;
+  classroom?: string | null;
+  campus?: string | null;
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
+  notes?: string | null;
+  accepted_by?: number | null;
+  teacher_name?: string;
+  teacher_email?: string;
+  teacher_department?: string;
+  teacher_phone?: string;
+  acceptor_name?: string;
+  acceptor_email?: string;
+  acceptor_department?: string;
+  acceptor_phone?: string;
+};
+
+type SubstituteRequestPayload = {
+  request_type: SubstituteRequestType;
+  subject?: string;
+  date: string;
+  time: string;
+  duration: number;
+  classroom?: string;
+  campus?: string;
+  notes?: string;
+};
+
+const readErrorMessage = async (response: Response, fallback: string) => {
+  try {
+    const error = await response.json();
+    return error.detail || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 // Helper to append @kiit.ac.in to email
 export const formatEmail = (username: string): string => {
   return `${username.toLowerCase().trim()}@kiit.ac.in`;
@@ -89,7 +134,7 @@ export const getPendingRequests = async () => {
     throw new Error('Failed to fetch requests');
   }
   
-  return response.json();
+  return response.json() as Promise<SubstituteRequest[]>;
 };
 
 export const getTeacherRequests = async (teacherId: number) => {
@@ -99,7 +144,7 @@ export const getTeacherRequests = async (teacherId: number) => {
     throw new Error('Failed to fetch teacher requests');
   }
   
-  return response.json();
+  return response.json() as Promise<SubstituteRequest[]>;
 };
 
 export const getAcceptedRequests = async (teacherId: number) => {
@@ -109,16 +154,28 @@ export const getAcceptedRequests = async (teacherId: number) => {
     throw new Error('Failed to fetch accepted requests');
   }
   
-  return response.json();
+  return response.json() as Promise<SubstituteRequest[]>;
+};
+
+export const getRequest = async (requestId: number) => {
+  const response = await fetch(`${API_BASE_URL}/requests/${requestId}`);
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to fetch request'));
+  }
+
+  return response.json() as Promise<SubstituteRequest>;
 };
 
 export const createRequest = async (data: {
   teacher_id: number;
-  subject: string;
+  request_type: SubstituteRequestType;
+  subject?: string;
   date: string;
   time: string;
   duration: number;
-  classroom: string;
+  classroom?: string;
+  campus?: string;
   notes?: string;
 }) => {
   const response = await fetch(`${API_BASE_URL}/requests`, {
@@ -128,11 +185,28 @@ export const createRequest = async (data: {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to create request');
+    throw new Error(await readErrorMessage(response, 'Failed to create request'));
   }
   
-  return response.json();
+  return response.json() as Promise<SubstituteRequest>;
+};
+
+export const updateRequest = async (
+  requestId: number,
+  teacherId: number,
+  data: Partial<SubstituteRequestPayload>
+) => {
+  const response = await fetch(`${API_BASE_URL}/requests/${requestId}?teacher_id=${teacherId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to update request'));
+  }
+
+  return response.json() as Promise<SubstituteRequest>;
 };
 
 export const acceptRequest = async (requestId: number, teacherId: number) => {
@@ -143,8 +217,7 @@ export const acceptRequest = async (requestId: number, teacherId: number) => {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to accept request');
+    throw new Error(await readErrorMessage(response, 'Failed to accept request'));
   }
   
   return response.json();
@@ -158,8 +231,7 @@ export const cancelRequest = async (requestId: number, teacherId: number) => {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to cancel request');
+    throw new Error(await readErrorMessage(response, 'Failed to cancel request'));
   }
   
   return response.json();

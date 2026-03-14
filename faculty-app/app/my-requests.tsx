@@ -14,26 +14,33 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getTeacherRequests, cancelRequest } from '../services/api';
+import { getTeacherRequests, cancelRequest, SubstituteRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-type Request = {
-  id: string;
-  subject: string;
-  date: string;
-  time: string;
-  duration: number;
-  classroom: string;
-  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
-  notes?: string;
-  accepted_by?: number;
-  acceptor_name?: string;
-  acceptor_email?: string;
-  acceptor_department?: string;
-  acceptor_phone?: string;
-};
+type Request = SubstituteRequest & { id: number };
 
 type FilterTab = 'all' | 'pending' | 'accepted' | 'cancelled';
+
+const getRequestTitle = (request: Request) => {
+  if (request.request_type === 'exam') {
+    return 'Exam Substitute';
+  }
+  return request.subject || 'Class Substitute';
+};
+
+const getLocationLabel = (request: Request) => {
+  return request.request_type === 'exam' ? 'Campus' : 'Room';
+};
+
+const getLocationValue = (request: Request) => {
+  return request.request_type === 'exam' ? request.campus || 'Campus TBD' : request.classroom || 'Room TBD';
+};
+
+const openWhatsApp = (phone: string, message: string) => {
+  const normalizedPhone = phone.replace(/[^\d]/g, '');
+  const encodedMessage = encodeURIComponent(message);
+  Linking.openURL(`https://wa.me/${normalizedPhone}?text=${encodedMessage}`);
+};
 
 const MyRequestsScreen = () => {
   const router = useRouter();
@@ -42,7 +49,7 @@ const MyRequestsScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
-  const [expandedSubstitute, setExpandedSubstitute] = useState<string | null>(null);
+  const [expandedSubstitute, setExpandedSubstitute] = useState<number | null>(null);
 
   const fetchRequests = async () => {
     if (!user) return;
@@ -66,7 +73,7 @@ const MyRequestsScreen = () => {
     fetchRequests();
   }, [user]);
 
-  const handleCancel = (requestId: string) => {
+  const handleCancel = (requestId: number) => {
     Alert.alert(
       'Cancel Request',
       'Are you sure you want to cancel this request?',
@@ -77,7 +84,7 @@ const MyRequestsScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await cancelRequest(Number(requestId), user!.id);
+              await cancelRequest(requestId, user!.id);
               fetchRequests();
               Alert.alert('Success', 'Request cancelled successfully');
             } catch (error: any) {
@@ -118,6 +125,13 @@ const MyRequestsScreen = () => {
     }
   };
 
+  const handleEdit = (requestId: number) => {
+    router.push({
+      pathname: '/request-substitute',
+      params: { requestId: requestId.toString() },
+    });
+  };
+
   const renderRequestCard = ({ item }: { item: Request }) => {
     const statusStyle = getStatusStyle(item.status);
 
@@ -135,7 +149,12 @@ const MyRequestsScreen = () => {
         </View>
 
         {/* Subject */}
-        <Text style={styles.subjectText}>{item.subject}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.subjectText}>{getRequestTitle(item)}</Text>
+          <View style={styles.requestTypeBadge}>
+            <Text style={styles.requestTypeText}>{item.request_type === 'exam' ? 'Exam' : 'Class'}</Text>
+          </View>
+        </View>
 
         {/* Details */}
         <View style={styles.detailsRow}>
@@ -151,8 +170,8 @@ const MyRequestsScreen = () => {
           </View>
           <View style={styles.detailItem}>
             <Ionicons name="location-outline" size={14} color="#6B7280" />
-            <Text style={styles.detailLabel}>Room</Text>
-            <Text style={styles.detailText}>{item.classroom}</Text>
+            <Text style={styles.detailLabel}>{getLocationLabel(item)}</Text>
+            <Text style={styles.detailText}>{getLocationValue(item)}</Text>
           </View>
         </View>
 
@@ -225,22 +244,44 @@ const MyRequestsScreen = () => {
                     <Text style={styles.contactButtonText}>Call</Text>
                   </TouchableOpacity>
                 )}
+                {item.acceptor_phone && (
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={() => openWhatsApp(item.acceptor_phone!, `Hi ${item.acceptor_name}, I updated the substitute request for ${getRequestTitle(item)} on ${formatDate(item.date)} at ${item.time}.`)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="logo-whatsapp" size={16} color="#10B981" />
+                    <Text style={styles.contactButtonText}>WhatsApp</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               </View>
             )}
           </View>
         )}
 
-        {/* Cancel Button (only for pending) */}
-        {item.status === 'pending' && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => handleCancel(item.id)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="close-circle-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
-            <Text style={styles.cancelButtonText}>Cancel Request</Text>
-          </TouchableOpacity>
+        {(item.status === 'pending' || item.status === 'accepted') && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => handleEdit(item.id)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="create-outline" size={18} color="#0F766E" style={{ marginRight: 6 }} />
+              <Text style={styles.editButtonText}>Update Request</Text>
+            </TouchableOpacity>
+
+            {item.status === 'pending' && (
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => handleCancel(item.id)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close-circle-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
+                <Text style={styles.cancelButtonText}>Cancel Request</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     );
@@ -301,7 +342,7 @@ const MyRequestsScreen = () => {
       {/* Request List */}
       <FlatList
         data={filteredRequests}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={renderRequestCard}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -450,7 +491,24 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#1F2937',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 12,
+  },
+  requestTypeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#ECFDF5',
+  },
+  requestTypeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
   },
   detailsRow: {
     flexDirection: 'row',
@@ -558,8 +616,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B5563',
   },
-  cancelButton: {
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 16,
+  },
+  editButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    backgroundColor: '#F0FDFA',
+    borderRadius: 12,
+    height: 44,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0F766E',
+  },
+  cancelButton: {
+    flex: 1,
     borderWidth: 1,
     borderColor: '#FCA5A5',
     backgroundColor: '#FEF2F2',

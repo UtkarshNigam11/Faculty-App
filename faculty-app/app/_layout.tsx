@@ -106,6 +106,8 @@ const RootLayout = () => {
             router.push('/view-requests');
           } else if (data?.type === 'request_accepted' || data?.type === 'request_cancelled') {
             router.push('/my-requests');
+          } else if (data?.type === 'request_updated') {
+            router.push(data?.target === 'accepted' ? '/accepted-requests' : '/view-requests');
           }
         });
       } catch (error) {
