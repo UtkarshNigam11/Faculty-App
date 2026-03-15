@@ -266,3 +266,53 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
     }
   }
 }
+
+// Notification types
+export interface NotificationRequest {
+  title: string
+  body: string
+  target_type: 'all' | 'specific' | 'department'
+  user_ids?: number[]
+  department?: string
+  data?: Record<string, unknown>
+}
+
+export interface NotificationResponse {
+  success: boolean
+  sent_count: number
+  failed_count: number
+  message: string
+}
+
+// Send notification (admin only)
+export const sendNotification = async (notification: NotificationRequest): Promise<NotificationResponse> => {
+  const response = await fetch(`${API_BASE_URL}/admin/notifications/send`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(notification),
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 403) throw new Error('Access denied - Admin only')
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to send notification')
+  }
+  
+  return response.json()
+}
+
+// Get departments for notification targeting
+export const getDepartments = async (): Promise<string[]> => {
+  const response = await fetch(`${API_BASE_URL}/admin/notifications/departments`, {
+    headers: getAuthHeaders()
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    throw new Error('Failed to fetch departments')
+  }
+  
+  const data = await response.json()
+  return data.departments || []
+}

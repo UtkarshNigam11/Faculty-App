@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
 import Requests from './pages/Requests'
+import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
 import Admins from './pages/Admins'
 import Layout from './components/Layout'
@@ -66,6 +67,7 @@ function App() {
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/users" element={<Users admin={admin} />} />
                   <Route path="/requests" element={<Requests admin={admin} />} />
+                  <Route path="/notifications" element={<Notifications />} />
                   {admin.role === 'super_admin' && (
                     <Route path="/admins" element={<Admins />} />
                   )}

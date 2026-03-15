@@ -7,6 +7,7 @@ import jwt
 import os
 from database import get_supabase
 from middleware.auth import get_current_admin, get_super_admin, TokenData
+from services.push_notifications import send_push_notification, send_push_to_multiple
 
 router = APIRouter()
 
@@ -349,4 +350,153 @@ async def change_admin_password(admin_id: int, new_password: str, current_admin:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to change password: {str(e)}"
+        )
+
+
+# Notification Models
+class NotificationRequest(BaseModel):
+    title: str
+    body: str
+    target_type: str  # "all", "specific", "department"
+    user_ids: Optional[List[int]] = None  # For "specific" target
+    department: Optional[str] = None  # For "department" target
+    data: Optional[dict] = None  # Additional data payload
+
+
+class NotificationResponse(BaseModel):
+    success: bool
+    sent_count: int
+    failed_count: int
+    message: str
+
+
+@router.post("/notifications/send", response_model=NotificationResponse)
+async def send_notification(notification: NotificationRequest, current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Send push notifications to users.
+    Admin only.
+    
+    target_type options:
+    - "all": Send to all users with push tokens
+    - "specific": Send to specific user IDs (provide user_ids)
+    - "department": Send to all users in a department (provide department)
+    """
+    supabase = get_supabase()
+    
+    if not notification.title or not notification.body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title and body are required"
+        )
+    
+    try:
+        # Get users based on target_type
+        if notification.target_type == "all":
+            result = supabase.table("users")\
+                .select("id, name, email, department, push_token")\
+                .execute()
+            users = result.data
+            
+        elif notification.target_type == "specific":
+            if not notification.user_ids or len(notification.user_ids) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="user_ids required for specific target"
+                )
+            result = supabase.table("users")\
+                .select("id, name, email, department, push_token")\
+                .in_("id", notification.user_ids)\
+                .execute()
+            users = result.data
+            
+        elif notification.target_type == "department":
+            if not notification.department:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="department required for department target"
+                )
+            result = supabase.table("users")\
+                .select("id, name, email, department, push_token")\
+                .eq("department", notification.department)\
+                .execute()
+            users = result.data
+            
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid target_type. Use 'all', 'specific', or 'department'"
+            )
+        
+        # Filter users with valid push tokens
+        valid_tokens = []
+        users_with_tokens = []
+        for user in users:
+            token = user.get("push_token")
+            if token and (token.startswith("ExponentPushToken[") or token.startswith("ExpoPushToken[")):
+                valid_tokens.append(token)
+                users_with_tokens.append(user)
+        
+        if not valid_tokens:
+            return NotificationResponse(
+                success=True,
+                sent_count=0,
+                failed_count=len(users),
+                message=f"No users with valid push tokens found ({len(users)} users checked)"
+            )
+        
+        # Send notifications
+        data_payload = notification.data or {}
+        data_payload["type"] = "admin_notification"
+        
+        print(f"[ADMIN-NOTIFY] Sending to {len(valid_tokens)} users")
+        print(f"[ADMIN-NOTIFY] Title: {notification.title}")
+        print(f"[ADMIN-NOTIFY] Body: {notification.body}")
+        
+        responses = send_push_to_multiple(valid_tokens, notification.title, notification.body, data_payload)
+        
+        sent_count = len(responses) if responses else 0
+        failed_count = len(users) - sent_count
+        
+        return NotificationResponse(
+            success=True,
+            sent_count=sent_count,
+            failed_count=failed_count,
+            message=f"Notification sent to {sent_count} users"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send notifications: {str(e)}"
+        )
+
+
+@router.get("/notifications/departments")
+async def get_departments(current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Get list of all unique departments for notification targeting.
+    """
+    supabase = get_supabase()
+    
+    try:
+        result = supabase.table("users")\
+            .select("department")\
+            .execute()
+        
+        # Get unique non-null departments
+        departments = list(set(
+            user["department"] 
+            for user in result.data 
+            if user.get("department")
+        ))
+        departments.sort()
+        
+        return {"departments": departments}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch departments: {str(e)}"
         )
