@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Trash2, X, Check, Calendar, Clock, MapPin, BookOpen, FileText, User, Phone, Mail, Building, ChevronDown, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Trash2, X, Check, Calendar, Clock, MapPin, BookOpen, FileText, Phone, Mail, Building, ChevronDown, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getRequests, deleteRequest, type SubstituteRequest, type Admin } from '../services/api'
 
 interface RequestsProps {
