@@ -118,15 +118,22 @@ export interface SubstituteRequest {
   id: number
   teacher_id: number
   teacher_name: string
+  teacher_email?: string
+  teacher_phone?: string
+  teacher_department?: string
   subject: string
   date: string
   time: string
-  room: string
+  classroom?: string
+  campus?: string
   notes: string
   status: 'pending' | 'accepted' | 'cancelled'
   request_type: 'class' | 'exam'
   accepted_by: number | null
   acceptor_name: string | null
+  acceptor_email?: string
+  acceptor_phone?: string
+  acceptor_department?: string
   created_at: string
 }
 

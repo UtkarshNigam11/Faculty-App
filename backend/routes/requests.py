@@ -146,26 +146,21 @@ async def get_all_requests(current_admin: TokenData = Depends(get_current_admin)
     supabase = get_supabase()
     
     try:
-        # Get all requests with teacher and acceptor names
+        # Get all requests with full teacher and acceptor details
         result = supabase.table("substitute_requests")\
-            .select("*, users!substitute_requests_teacher_id_fkey(name), acceptor:users!substitute_requests_accepted_by_fkey(name)")\
+            .select("*, teacher:users!substitute_requests_teacher_id_fkey(id, name, email, phone, department), acceptor:users!substitute_requests_accepted_by_fkey(id, name, email, phone, department)")\
             .order("created_at", desc=True)\
             .execute()
         
         requests_list = []
         for req in result.data:
-            teacher_name = None
-            acceptor_name = None
-            
-            if req.get("users"):
-                teacher_name = req["users"].get("name")
-            if req.get("acceptor"):
-                acceptor_name = req["acceptor"].get("name")
+            teacher = req.get("teacher") or {}
+            acceptor = req.get("acceptor") or {}
             
             response = _build_response(
                 req, 
-                teacher={"name": teacher_name} if teacher_name else None,
-                acceptor={"name": acceptor_name} if acceptor_name else None
+                teacher=teacher if teacher else None,
+                acceptor=acceptor if acceptor else None
             )
             requests_list.append(response)
         
