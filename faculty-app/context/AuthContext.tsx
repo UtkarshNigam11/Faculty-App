@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { getPushTokenStatus, sendPushTokenDebug, updatePushToken } from '../services/api';
+import { getPushTokenStatus, sendPushTokenDebug, updatePushToken, refreshAuthToken } from '../services/api';
 import { getLastPushDebugState, getPushDebugDetails, initializeNotifications, registerForPushNotificationsAsync } from '../services/notifications';
 
 interface User {
@@ -15,9 +15,10 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (user: User, token?: string) => Promise<void>;
+  login: (user: User, token?: string, refreshToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUserData: (userData: Partial<User>) => Promise<void>;
+  refreshSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,6 +34,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     loadStoredUser();
   }, []);
+
+  // Refresh token periodically (every 45 minutes to be safe before 1 hour expiry)
+  useEffect(() => {
+    if (!user) return;
+    
+    const refreshInterval = setInterval(async () => {
+      console.log('[Auth] Auto-refreshing session...');
+      await refreshSession();
+    }, 45 * 60 * 1000); // 45 minutes
+
+    return () => clearInterval(refreshInterval);
+  }, [user]);
 
   const loadStoredUser = async () => {
     try {
@@ -107,20 +120,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const login = async (userData: User, token?: string) => {
+  const login = async (userData: User, token?: string, refreshToken?: string) => {
     try {
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       if (token) {
         await AsyncStorage.setItem('token', token);
       }
+      if (refreshToken) {
+        await AsyncStorage.setItem('refreshToken', refreshToken);
+      }
       setUser(userData);
 
-      
       // Register for push notifications after login
       await registerPushToken(userData.id);
     } catch (error) {
       console.error('Login error:', error);
       throw error;
+    }
+  };
+
+  const refreshSession = async (): Promise<boolean> => {
+    try {
+      const storedRefreshToken = await AsyncStorage.getItem('refreshToken');
+      if (!storedRefreshToken) {
+        console.log('[Auth] No refresh token available');
+        return false;
+      }
+
+      const response = await refreshAuthToken(storedRefreshToken);
+      
+      if (response && response.access_token) {
+        await AsyncStorage.setItem('token', response.access_token);
+        if (response.refresh_token) {
+          await AsyncStorage.setItem('refreshToken', response.refresh_token);
+        }
+        console.log('[Auth] Session refreshed successfully');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[Auth] Failed to refresh session:', error);
+      return false;
     }
   };
 
@@ -134,11 +174,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     setUser(null);
-    await AsyncStorage.multiRemove(['user', 'token', 'pushToken']);
+    await AsyncStorage.multiRemove(['user', 'token', 'refreshToken', 'pushToken']);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUserData }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUserData, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );

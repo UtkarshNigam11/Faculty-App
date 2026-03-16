@@ -136,6 +136,22 @@ export const resetPassword = async (email: string) => {
   return response.json();
 };
 
+// Refresh authentication token
+export const refreshAuthToken = async (refreshToken: string) => {
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to refresh token');
+  }
+  
+  return response.json();
+};
+
 // Requests APIs (auth required)
 export const getPendingRequests = async () => {
   const headers = await getAuthHeaders();

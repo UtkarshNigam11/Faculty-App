@@ -41,7 +41,7 @@ const LoginScreen = () => {
       const response = await apiLogin(username, password);
       
       if (response && response.user) {
-        await login(response.user, response.access_token);
+        await login(response.user, response.access_token, response.refresh_token);
         router.replace('/');
       } else {
         Alert.alert('Error', 'Invalid response from server');

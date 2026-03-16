@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 import os
@@ -229,11 +230,28 @@ async def resend_verification(email: str):
         )
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_token_json(request: RefreshTokenRequest):
+    """
+    Refresh the access token using a refresh token (JSON body).
+    """
+    return await _do_refresh_token(request.refresh_token)
+
+
 @router.post("/refresh-token", response_model=Token)
 async def refresh_token(refresh_token: str):
     """
-    Refresh the access token using a refresh token.
+    Refresh the access token using a refresh token (query param).
     """
+    return await _do_refresh_token(refresh_token)
+
+
+async def _do_refresh_token(refresh_token: str):
+    """Internal function to handle token refresh."""
     supabase = get_supabase()
 
     try:
