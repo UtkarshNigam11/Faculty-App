@@ -3,13 +3,18 @@ import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CheckCircle, AlertCircle, Loader2, Play, Apple } from 'lucide-react';
 
+const API_BASE = 'https://faculty-app-j8ct.onrender.com/api';
+
 const CompleteRegistration = () => {
   const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
+  const customToken = searchParams.get('token');
+  const accessToken = searchParams.get('access_token');
+  const errorParam = searchParams.get('error');
   
   const [inviteData, setInviteData] = useState(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [supabaseToken, setSupabaseToken] = useState(null);
   
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -17,25 +22,50 @@ const CompleteRegistration = () => {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!token) {
-      setError('No invite token provided. Please use the exact link from your email.');
+    if (errorParam) {
+      const messages = {
+        missing_token: 'Invalid invite link. Please use the link from your invitation email.',
+        invalid_token: 'This invite link has expired or is invalid. Please contact your administrator.',
+        no_session: 'Could not verify your invite. Please try again.',
+        verify_failed: 'Verification failed. Please try the link again.'
+      };
+      setError(messages[errorParam] || 'Something went wrong. Please try again.');
       setLoading(false);
       return;
     }
     
-    // Fetch invite details
-    fetch(`https://faculty-app-j8ct.onrender.com/api/auth/invite/${token}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.detail || 'Invalid or expired invite link');
-        }
-        return data;
-      })
-      .then(data => setInviteData(data))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [token]);
+    if (customToken) {
+      // Custom invite flow
+      fetch(`${API_BASE}/auth/invite/${customToken}`)
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Invalid or expired invite link');
+          return data;
+        })
+        .then(data => setInviteData(data))
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false));
+    } else if (accessToken) {
+      // Supabase flow - backend redirected with access_token in query
+      setSupabaseToken(accessToken);
+      fetch(`${API_BASE}/auth/verify-invite-token?access_token=${encodeURIComponent(accessToken)}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error('Invalid or expired invite link');
+          return res.json();
+        })
+        .then(data => setInviteData({
+          name: data.name || data.email?.split('@')[0],
+          email: data.email,
+          department: data.department || '',
+          phone: data.phone || ''
+        }))
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false));
+    } else {
+      setError('No invite token provided. Please use the exact link from your email.');
+      setLoading(false);
+    }
+  }, [customToken, accessToken, errorParam]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -54,11 +84,26 @@ const CompleteRegistration = () => {
     setError('');
 
     try {
-      const res = await fetch('https://faculty-app-j8ct.onrender.com/api/auth/complete-registration', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password })
-      });
+      let res;
+      if (supabaseToken) {
+        res = await fetch(`${API_BASE}/auth/complete-supabase-registration`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: supabaseToken,
+            password,
+            name: inviteData?.name,
+            department: inviteData?.department,
+            phone: inviteData?.phone
+          })
+        });
+      } else {
+        res = await fetch(`${API_BASE}/auth/complete-registration`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: customToken, password })
+        });
+      }
       
       const data = await res.json();
       
@@ -147,7 +192,7 @@ const CompleteRegistration = () => {
                   </button>
                 </div>
              </motion.div>
-          ) : (
+          ) : inviteData ? (
             <form onSubmit={handleSubmit} className="space-y-5">
               
               <div className="grid grid-cols-2 gap-4">
@@ -155,7 +200,7 @@ const CompleteRegistration = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                   <input
                     type="text"
-                    value={inviteData.name}
+                    value={inviteData?.name || ''}
                     readOnly
                     className="appearance-none block w-full px-3 py-2.5 border border-gray-200 rounded-lg shadow-sm bg-gray-50 text-gray-500 focus:outline-none sm:text-sm"
                   />
@@ -164,7 +209,7 @@ const CompleteRegistration = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                   <input
                     type="text"
-                    value={inviteData.department}
+                    value={inviteData?.department || ''}
                     readOnly
                     className="appearance-none block w-full px-3 py-2.5 border border-gray-200 rounded-lg shadow-sm bg-gray-50 text-gray-500 focus:outline-none sm:text-sm"
                   />
@@ -175,7 +220,7 @@ const CompleteRegistration = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Official Email</label>
                 <input
                   type="email"
-                  value={inviteData.email}
+                  value={inviteData?.email || ''}
                   readOnly
                   className="appearance-none block w-full px-3 py-2.5 border border-gray-200 rounded-lg shadow-sm bg-gray-50 text-gray-500 focus:outline-none sm:text-sm"
                 />
@@ -185,7 +230,7 @@ const CompleteRegistration = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                 <input
                   type="text"
-                  value={inviteData.phone}
+                  value={inviteData?.phone || ''}
                   readOnly
                   className="appearance-none block w-full px-3 py-2.5 border border-gray-200 rounded-lg shadow-sm bg-gray-50 text-gray-500 focus:outline-none sm:text-sm"
                 />
@@ -249,7 +294,7 @@ const CompleteRegistration = () => {
                 </button>
               </div>
             </form>
-          )}
+          ) : null}
         </motion.div>
       </div>
     </div>
