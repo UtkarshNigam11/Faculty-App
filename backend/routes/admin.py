@@ -397,13 +397,9 @@ class PendingInvite(BaseModel):
 # =============================================
 
 def validate_faculty_email(email: str) -> bool:
-    """Validate that email is a valid KIIT faculty email."""
+    """Validate that email is a valid KIIT email."""
     email = email.lower()
-    if not email.endswith('@kiit.ac.in'):
-        return False
-    if 'fcs' not in email:
-        return False
-    return True
+    return email.endswith('@kiit.ac.in')
 
 
 def generate_invite_token() -> str:
@@ -424,7 +420,7 @@ async def invite_user(invite: InviteUserRequest, current_admin: TokenData = Depe
     if not validate_faculty_email(email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email must be a valid KIIT faculty email (@kiit.ac.in with 'fcs')"
+            detail="Email must be a valid KIIT email (@kiit.ac.in)"
         )
     
     try:
