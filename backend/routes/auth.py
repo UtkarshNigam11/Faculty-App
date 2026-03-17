@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
@@ -11,6 +12,9 @@ from models import UserCreate, UserLogin, UserResponse, Token, SignupResponse, V
 load_dotenv()
 
 router = APIRouter()
+
+# Landing page URL for invite redirects
+LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "https://faculty-app-landing.pages.dev")
 
 
 # Model for complete registration
@@ -374,6 +378,71 @@ async def get_current_user(access_token: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get user: {str(e)}"
+        )
+
+
+@router.get("/confirm-invite")
+async def confirm_invite_redirect(
+    token: Optional[str] = None,
+    token_hash: Optional[str] = None,
+    type: Optional[str] = None
+):
+    """
+    Receives redirect from Supabase invite link.
+    Exchanges token for session and redirects to registration page with access_token in query.
+    This fixes the hash fragment issue - tokens in hash don't reach client on some redirects.
+    """
+    import httpx
+    
+    # Use token or token_hash (Supabase may send either)
+    verify_token = token or token_hash
+    if not verify_token:
+        return RedirectResponse(
+            url=f"{LANDING_BASE_URL}/complete-registration?error=missing_token",
+            status_code=302
+        )
+    
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{supabase_url}/auth/v1/verify",
+                headers={
+                    "apikey": supabase_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "token_hash": verify_token,
+                    "type": type or "invite"
+                }
+            )
+            
+            if response.status_code != 200:
+                return RedirectResponse(
+                    url=f"{LANDING_BASE_URL}/complete-registration?error=invalid_token",
+                    status_code=302
+                )
+            
+            data = response.json()
+            access_token = data.get("access_token")
+            
+            if not access_token:
+                return RedirectResponse(
+                    url=f"{LANDING_BASE_URL}/complete-registration?error=no_session",
+                    status_code=302
+                )
+            
+            # Redirect to registration page with token in query (reliable, no hash issues)
+            redirect_url = f"{LANDING_BASE_URL}/complete-registration?access_token={access_token}"
+            return RedirectResponse(url=redirect_url, status_code=302)
+            
+    except Exception as e:
+        print(f"[AUTH] confirm-invite error: {e}")
+        return RedirectResponse(
+            url=f"{LANDING_BASE_URL}/complete-registration?error=verify_failed",
+            status_code=302
         )
 
 

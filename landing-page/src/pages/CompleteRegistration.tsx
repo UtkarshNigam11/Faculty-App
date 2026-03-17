@@ -41,23 +41,37 @@ export default function CompleteRegistration() {
   const [supabaseToken, setSupabaseToken] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check for our custom invite token in query params
     const urlParams = new URLSearchParams(window.location.search)
+    
+    // Check for error from backend redirect (e.g. ?error=invalid_token)
+    const errorParam = urlParams.get('error')
+    if (errorParam) {
+      const errorMessages: Record<string, string> = {
+        missing_token: 'Invalid invite link. Please use the link from your invitation email.',
+        invalid_token: 'This invite link has expired or is invalid. Please contact your administrator for a new invite.',
+        no_session: 'Could not verify your invite. Please try again or contact your administrator.',
+        verify_failed: 'Verification failed. Please try the link again or contact your administrator.'
+      }
+      setError(errorMessages[errorParam] || 'Something went wrong. Please try again.')
+      setLoading(false)
+      return
+    }
+    
+    // Check for our custom invite token (?token=xxx)
     const customToken = urlParams.get('token')
     
-    // Check for Supabase token in hash fragment
+    // Check for Supabase access_token - from backend redirect (?access_token=xxx) or hash (#access_token=xxx)
     const hashParams = new URLSearchParams(window.location.hash.substring(1))
-    const accessToken = hashParams.get('access_token')
-    const tokenType = hashParams.get('type')
+    const accessTokenFromHash = hashParams.get('access_token')
+    const accessTokenFromQuery = urlParams.get('access_token')
+    const supabaseToken = accessTokenFromHash || accessTokenFromQuery
     
     if (customToken) {
-      // Our custom invite flow
       setInviteToken(customToken)
       fetchInviteDetails(customToken)
-    } else if (accessToken && tokenType === 'invite') {
-      // Supabase invite flow
-      setSupabaseToken(accessToken)
-      fetchUserFromSupabase(accessToken)
+    } else if (supabaseToken) {
+      setSupabaseToken(supabaseToken)
+      fetchUserFromSupabase(supabaseToken)
     } else {
       setError('No invite token provided. Please use the link from your invitation email.')
       setLoading(false)
