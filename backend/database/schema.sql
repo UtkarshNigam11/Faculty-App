@@ -143,6 +143,35 @@ CREATE TRIGGER update_substitute_requests_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================
+-- PENDING INVITES TABLE
+-- =============================================
+
+-- Stores invited users before they complete registration
+CREATE TABLE IF NOT EXISTS pending_invites (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    department VARCHAR(100),
+    phone VARCHAR(20),
+    invite_token VARCHAR(255) UNIQUE NOT NULL,
+    invited_by INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT (TIMEZONE('utc', NOW()) + INTERVAL '7 days')
+);
+
+-- Indexes for pending_invites
+CREATE INDEX IF NOT EXISTS idx_pending_invites_email ON pending_invites(email);
+CREATE INDEX IF NOT EXISTS idx_pending_invites_token ON pending_invites(invite_token);
+CREATE INDEX IF NOT EXISTS idx_pending_invites_status ON pending_invites(status);
+
+-- RLS for pending_invites
+ALTER TABLE pending_invites ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all operations on pending_invites" ON pending_invites;
+CREATE POLICY "Allow all operations on pending_invites" ON pending_invites
+    FOR ALL USING (true) WITH CHECK (true);
+
+-- =============================================
 -- SUPABASE AUTH EMAIL CONFIGURATION
 -- =============================================
 -- To enable email verification:

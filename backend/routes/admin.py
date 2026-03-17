@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import bcrypt
 import jwt
 import os
+import secrets
+import re
 from database import get_supabase
 from middleware.auth import get_current_admin, get_super_admin, TokenData
 from services.push_notifications import send_push_notification, send_push_to_multiple
@@ -351,6 +353,328 @@ async def change_admin_password(admin_id: int, new_password: str, current_admin:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to change password: {str(e)}"
         )
+
+
+# =============================================
+# USER INVITE ENDPOINTS
+# =============================================
+
+def validate_faculty_email(email: str) -> bool:
+    """Validate that email is a valid KIIT faculty email."""
+    email = email.lower()
+    if not email.endswith('@kiit.ac.in'):
+        return False
+    if 'fcs' not in email:
+        return False
+    return True
+
+
+def generate_invite_token() -> str:
+    """Generate a secure random invite token."""
+    return secrets.token_urlsafe(32)
+
+
+@router.post("/invite", response_model=InviteResponse)
+async def invite_user(invite: InviteUserRequest, current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Invite a single user to register.
+    Sends invite email via Supabase Auth.
+    """
+    supabase = get_supabase()
+    email = invite.email.lower()
+    
+    # Validate email format
+    if not validate_faculty_email(email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email must be a valid KIIT faculty email (@kiit.ac.in with 'fcs')"
+        )
+    
+    try:
+        # Check if user already exists
+        existing_user = supabase.table("users").select("id").eq("email", email).execute()
+        if existing_user.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
+        
+        # Check if invite already pending
+        existing_invite = supabase.table("pending_invites")\
+            .select("id, status")\
+            .eq("email", email)\
+            .eq("status", "pending")\
+            .execute()
+        
+        if existing_invite.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An invite is already pending for this email"
+            )
+        
+        # Generate invite token
+        invite_token = generate_invite_token()
+        
+        # Store pending invite
+        invite_data = {
+            "email": email,
+            "name": invite.name,
+            "department": invite.department,
+            "phone": invite.phone,
+            "invite_token": invite_token,
+            "invited_by": current_admin.user_id if current_admin.token_type == "admin" else None,
+            "status": "pending"
+        }
+        
+        supabase.table("pending_invites").insert(invite_data).execute()
+        
+        # Send invite email via Supabase Auth
+        try:
+            supabase.auth.admin.invite_user_by_email(email)
+            print(f"[INVITE] Sent invite to {email}")
+        except Exception as email_error:
+            print(f"[INVITE] Failed to send email: {email_error}")
+            # Still return success since invite is stored
+        
+        return InviteResponse(
+            success=True,
+            message=f"Invite sent to {email}",
+            invite_token=invite_token,
+            email=email
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send invite: {str(e)}"
+        )
+
+
+@router.post("/invite/bulk", response_model=BulkInviteResponse)
+async def bulk_invite_users(bulk_invite: BulkInviteRequest, current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Invite multiple users from a list (used for CSV upload).
+    """
+    supabase = get_supabase()
+    
+    sent = 0
+    failed = 0
+    errors = []
+    
+    for user in bulk_invite.users:
+        email = user.email.lower()
+        
+        try:
+            # Validate email
+            if not validate_faculty_email(email):
+                errors.append(f"{email}: Invalid KIIT faculty email")
+                failed += 1
+                continue
+            
+            # Check if user already exists
+            existing_user = supabase.table("users").select("id").eq("email", email).execute()
+            if existing_user.data:
+                errors.append(f"{email}: User already exists")
+                failed += 1
+                continue
+            
+            # Check if invite already pending
+            existing_invite = supabase.table("pending_invites")\
+                .select("id")\
+                .eq("email", email)\
+                .eq("status", "pending")\
+                .execute()
+            
+            if existing_invite.data:
+                errors.append(f"{email}: Invite already pending")
+                failed += 1
+                continue
+            
+            # Generate invite token
+            invite_token = generate_invite_token()
+            
+            # Store pending invite
+            invite_data = {
+                "email": email,
+                "name": user.name,
+                "department": user.department,
+                "phone": user.phone,
+                "invite_token": invite_token,
+                "invited_by": current_admin.user_id if current_admin.token_type == "admin" else None,
+                "status": "pending"
+            }
+            
+            supabase.table("pending_invites").insert(invite_data).execute()
+            
+            # Send invite email
+            try:
+                supabase.auth.admin.invite_user_by_email(email)
+            except Exception as email_error:
+                print(f"[BULK-INVITE] Email failed for {email}: {email_error}")
+            
+            sent += 1
+            
+        except Exception as e:
+            errors.append(f"{email}: {str(e)}")
+            failed += 1
+    
+    return BulkInviteResponse(
+        success=failed == 0,
+        total=len(bulk_invite.users),
+        sent=sent,
+        failed=failed,
+        errors=errors
+    )
+
+
+@router.get("/invites", response_model=List[PendingInvite])
+async def get_pending_invites(current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Get all pending invites.
+    """
+    supabase = get_supabase()
+    
+    try:
+        result = supabase.table("pending_invites")\
+            .select("*")\
+            .order("created_at", desc=True)\
+            .execute()
+        
+        return [
+            {
+                "id": inv["id"],
+                "email": inv["email"],
+                "name": inv["name"],
+                "department": inv.get("department"),
+                "phone": inv.get("phone"),
+                "status": inv["status"],
+                "created_at": inv["created_at"],
+                "expires_at": inv["expires_at"]
+            }
+            for inv in result.data
+        ]
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch invites: {str(e)}"
+        )
+
+
+@router.delete("/invites/{invite_id}")
+async def cancel_invite(invite_id: int, current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Cancel/delete a pending invite.
+    """
+    supabase = get_supabase()
+    
+    try:
+        result = supabase.table("pending_invites")\
+            .delete()\
+            .eq("id", invite_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invite not found"
+            )
+        
+        return {"message": "Invite cancelled successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel invite: {str(e)}"
+        )
+
+
+@router.post("/invites/{invite_id}/resend")
+async def resend_invite(invite_id: int, current_admin: TokenData = Depends(get_current_admin)):
+    """
+    Resend invite email for a pending invite.
+    """
+    supabase = get_supabase()
+    
+    try:
+        # Get the invite
+        result = supabase.table("pending_invites")\
+            .select("*")\
+            .eq("id", invite_id)\
+            .eq("status", "pending")\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pending invite not found"
+            )
+        
+        invite = result.data[0]
+        
+        # Generate new token and update expiry
+        new_token = generate_invite_token()
+        supabase.table("pending_invites")\
+            .update({
+                "invite_token": new_token,
+                "expires_at": (datetime.utcnow() + timedelta(days=7)).isoformat()
+            })\
+            .eq("id", invite_id)\
+            .execute()
+        
+        # Resend email
+        try:
+            supabase.auth.admin.invite_user_by_email(invite["email"])
+        except Exception as email_error:
+            print(f"[RESEND-INVITE] Email failed: {email_error}")
+        
+        return {"message": f"Invite resent to {invite['email']}"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to resend invite: {str(e)}"
+        )
+
+
+# Invite Models
+class InviteUserRequest(BaseModel):
+    email: str
+    name: str
+    department: Optional[str] = None
+    phone: Optional[str] = None
+
+class BulkInviteRequest(BaseModel):
+    users: List[InviteUserRequest]
+
+class InviteResponse(BaseModel):
+    success: bool
+    message: str
+    invite_token: Optional[str] = None
+    email: Optional[str] = None
+
+class BulkInviteResponse(BaseModel):
+    success: bool
+    total: int
+    sent: int
+    failed: int
+    errors: List[str]
+
+class PendingInvite(BaseModel):
+    id: int
+    email: str
+    name: str
+    department: Optional[str] = None
+    phone: Optional[str] = None
+    status: str
+    created_at: str
+    expires_at: str
 
 
 # Notification Models

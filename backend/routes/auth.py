@@ -12,6 +12,12 @@ load_dotenv()
 
 router = APIRouter()
 
+
+# Model for complete registration
+class CompleteRegistrationRequest(BaseModel):
+    token: str  # Invite token
+    password: str
+
 # Try to import AuthApiError, fallback to Exception if not available
 try:
     from gotrue.errors import AuthApiError
@@ -368,6 +374,193 @@ async def get_current_user(access_token: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get user: {str(e)}"
+        )
+
+
+@router.get("/invite/{invite_token}")
+async def get_invite_details(invite_token: str):
+    """
+    Get invite details by token.
+    Used by the registration page to show pre-filled user data.
+    """
+    supabase = get_supabase()
+    
+    try:
+        result = supabase.table("pending_invites")\
+            .select("*")\
+            .eq("invite_token", invite_token)\
+            .eq("status", "pending")\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invalid or expired invite link"
+            )
+        
+        invite = result.data[0]
+        
+        # Check if expired
+        expires_at = datetime.fromisoformat(invite["expires_at"].replace("Z", "+00:00"))
+        if datetime.now(expires_at.tzinfo) > expires_at:
+            # Mark as expired
+            supabase.table("pending_invites")\
+                .update({"status": "expired"})\
+                .eq("id", invite["id"])\
+                .execute()
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="Invite link has expired. Please contact admin for a new invite."
+            )
+        
+        return {
+            "email": invite["email"],
+            "name": invite["name"],
+            "department": invite.get("department"),
+            "phone": invite.get("phone")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get invite details: {str(e)}"
+        )
+
+
+@router.post("/complete-registration")
+async def complete_registration(request: CompleteRegistrationRequest):
+    """
+    Complete registration for an invited user.
+    Creates Supabase Auth account and user profile.
+    """
+    supabase = get_supabase()
+    
+    if len(request.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters"
+        )
+    
+    try:
+        # Get pending invite
+        invite_result = supabase.table("pending_invites")\
+            .select("*")\
+            .eq("invite_token", request.token)\
+            .eq("status", "pending")\
+            .execute()
+        
+        if not invite_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invalid or expired invite link"
+            )
+        
+        invite = invite_result.data[0]
+        
+        # Check if expired
+        expires_at = datetime.fromisoformat(invite["expires_at"].replace("Z", "+00:00"))
+        if datetime.now(expires_at.tzinfo) > expires_at:
+            supabase.table("pending_invites")\
+                .update({"status": "expired"})\
+                .eq("id", invite["id"])\
+                .execute()
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="Invite link has expired. Please contact admin for a new invite."
+            )
+        
+        # Check if user already exists in users table
+        existing_user = supabase.table("users").select("id").eq("email", invite["email"]).execute()
+        if existing_user.data:
+            # Mark invite as accepted
+            supabase.table("pending_invites")\
+                .update({"status": "accepted"})\
+                .eq("id", invite["id"])\
+                .execute()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Account already exists. Please login instead."
+            )
+        
+        # Create Supabase Auth user
+        try:
+            auth_response = supabase.auth.admin.create_user({
+                "email": invite["email"],
+                "password": request.password,
+                "email_confirm": True,  # Auto-confirm since they came from invite
+                "user_metadata": {
+                    "name": invite["name"],
+                    "department": invite.get("department"),
+                    "phone": invite.get("phone")
+                }
+            })
+            
+            if not auth_response.user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create auth account"
+                )
+            
+            auth_user = auth_response.user
+            
+        except Exception as auth_error:
+            error_str = str(auth_error).lower()
+            if "already" in error_str or "exists" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Account already exists. Please login instead."
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create account: {str(auth_error)}"
+            )
+        
+        # Create user profile in users table
+        user_data = {
+            "auth_id": auth_user.id,
+            "name": invite["name"],
+            "email": invite["email"],
+            "department": invite.get("department"),
+            "phone": invite.get("phone"),
+            "email_verified": True
+        }
+        
+        user_result = supabase.table("users").insert(user_data).execute()
+        
+        if not user_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user profile"
+            )
+        
+        # Mark invite as accepted
+        supabase.table("pending_invites")\
+            .update({"status": "accepted"})\
+            .eq("id", invite["id"])\
+            .execute()
+        
+        new_user = user_result.data[0]
+        
+        return {
+            "success": True,
+            "message": "Registration complete! You can now login with the app.",
+            "user": {
+                "id": new_user["id"],
+                "name": new_user["name"],
+                "email": new_user["email"],
+                "department": new_user.get("department"),
+                "phone": new_user.get("phone")
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
         )
 
 

@@ -323,3 +323,124 @@ export const getDepartments = async (): Promise<string[]> => {
   const data = await response.json()
   return data.departments || []
 }
+
+// =============================================
+// INVITE TYPES AND FUNCTIONS
+// =============================================
+
+export interface InviteUserRequest {
+  email: string
+  name: string
+  department?: string
+  phone?: string
+}
+
+export interface InviteResponse {
+  success: boolean
+  message: string
+  invite_token?: string
+  email?: string
+}
+
+export interface BulkInviteResponse {
+  success: boolean
+  total: number
+  sent: number
+  failed: number
+  errors: string[]
+}
+
+export interface PendingInvite {
+  id: number
+  email: string
+  name: string
+  department?: string
+  phone?: string
+  status: 'pending' | 'accepted' | 'expired'
+  created_at: string
+  expires_at: string
+}
+
+// Invite a single user
+export const inviteUser = async (invite: InviteUserRequest): Promise<InviteResponse> => {
+  const response = await fetch(`${API_BASE_URL}/admin/invite`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(invite),
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 403) throw new Error('Access denied - Admin only')
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to send invite')
+  }
+  
+  return response.json()
+}
+
+// Bulk invite users (from CSV)
+export const bulkInviteUsers = async (users: InviteUserRequest[]): Promise<BulkInviteResponse> => {
+  const response = await fetch(`${API_BASE_URL}/admin/invite/bulk`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ users }),
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 403) throw new Error('Access denied - Admin only')
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to send invites')
+  }
+  
+  return response.json()
+}
+
+// Get pending invites
+export const getPendingInvites = async (): Promise<PendingInvite[]> => {
+  const response = await fetch(`${API_BASE_URL}/admin/invites`, {
+    headers: getAuthHeaders()
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 403) throw new Error('Access denied - Admin only')
+    throw new Error('Failed to fetch pending invites')
+  }
+  
+  return response.json()
+}
+
+// Cancel/delete an invite
+export const cancelInvite = async (inviteId: number): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/invites/${inviteId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 403) throw new Error('Access denied - Admin only')
+    throw new Error('Failed to cancel invite')
+  }
+  
+  return response.json()
+}
+
+// Resend invite email
+export const resendInvite = async (inviteId: number): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/invites/${inviteId}/resend`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  })
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 403) throw new Error('Access denied - Admin only')
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to resend invite')
+  }
+  
+  return response.json()
+}
