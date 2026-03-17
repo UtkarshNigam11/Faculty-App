@@ -1,31 +1,16 @@
 import React from 'react';
-import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import ProblemStatement from './components/ProblemStatement';
-import Features from './components/Features';
-import HowItWorks from './components/HowItWorks';
-import Screenshots from './components/Screenshots';
-import Benefits from './components/Benefits';
-import FAQ from './components/FAQ';
-import Download from './components/Download';
-import Footer from './components/Footer';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import CompleteRegistration from './pages/CompleteRegistration';
 
 function App() {
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 selection:bg-kiit-green selection:text-white">
-      <Navbar />
-      <main>
-        <Hero />
-        <ProblemStatement />
-        <Features />
-        <HowItWorks />
-        <Screenshots />
-        <Benefits />
-        <FAQ />
-        <Download />
-      </main>
-      <Footer />
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/complete-registration" element={<CompleteRegistration />} />
+      </Routes>
+    </Router>
   );
 }
 
