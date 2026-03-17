@@ -356,6 +356,43 @@ async def change_admin_password(admin_id: int, new_password: str, current_admin:
 
 
 # =============================================
+# USER INVITE MODELS
+# =============================================
+
+class InviteUserRequest(BaseModel):
+    email: str
+    name: str
+    department: Optional[str] = None
+    phone: Optional[str] = None
+
+class BulkInviteRequest(BaseModel):
+    users: List[InviteUserRequest]
+
+class InviteResponse(BaseModel):
+    success: bool
+    message: str
+    invite_token: Optional[str] = None
+    email: Optional[str] = None
+
+class BulkInviteResponse(BaseModel):
+    success: bool
+    total: int
+    sent: int
+    failed: int
+    errors: List[str]
+
+class PendingInvite(BaseModel):
+    id: int
+    email: str
+    name: str
+    department: Optional[str] = None
+    phone: Optional[str] = None
+    status: str
+    created_at: str
+    expires_at: str
+
+
+# =============================================
 # USER INVITE ENDPOINTS
 # =============================================
 
@@ -641,40 +678,6 @@ async def resend_invite(invite_id: int, current_admin: TokenData = Depends(get_c
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to resend invite: {str(e)}"
         )
-
-
-# Invite Models
-class InviteUserRequest(BaseModel):
-    email: str
-    name: str
-    department: Optional[str] = None
-    phone: Optional[str] = None
-
-class BulkInviteRequest(BaseModel):
-    users: List[InviteUserRequest]
-
-class InviteResponse(BaseModel):
-    success: bool
-    message: str
-    invite_token: Optional[str] = None
-    email: Optional[str] = None
-
-class BulkInviteResponse(BaseModel):
-    success: bool
-    total: int
-    sent: int
-    failed: int
-    errors: List[str]
-
-class PendingInvite(BaseModel):
-    id: int
-    email: str
-    name: str
-    department: Optional[str] = None
-    phone: Optional[str] = None
-    status: str
-    created_at: str
-    expires_at: str
 
 
 # Notification Models
