@@ -21,6 +21,7 @@ export default function Users({ admin }: UsersProps) {
   
   // Tab state
   const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users')
+  const [inviteStatusFilter, setInviteStatusFilter] = useState<'all' | 'pending' | 'accepted' | 'expired'>('pending')
   
   // Invite modal state
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -221,11 +222,16 @@ export default function Users({ admin }: UsersProps) {
     user.department?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const filteredInvites = pendingInvites.filter(invite =>
-    invite.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    invite.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    invite.department?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredInvites = pendingInvites.filter(invite => {
+    const matchesSearch =
+      invite.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invite.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invite.department?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const matchesStatus = inviteStatusFilter === 'all' || invite.status === inviteStatusFilter
+
+    return matchesSearch && matchesStatus
+  })
 
   const pendingCount = pendingInvites.filter(i => i.status === 'pending').length
 
@@ -287,16 +293,31 @@ export default function Users({ admin }: UsersProps) {
         </nav>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-        <input
-          type="text"
-          placeholder={activeTab === 'users' ? "Search users..." : "Search invites..."}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-        />
+      {/* Search + Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder={activeTab === 'users' ? "Search users..." : "Search invites..."}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          />
+        </div>
+
+        {activeTab === 'invites' && (
+          <select
+            value={inviteStatusFilter}
+            onChange={(e) => setInviteStatusFilter(e.target.value as 'all' | 'pending' | 'accepted' | 'expired')}
+            className="px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none sm:w-56"
+          >
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="expired">Expired</option>
+            <option value="all">All</option>
+          </select>
+        )}
       </div>
 
       {/* Users Table */}
@@ -309,7 +330,6 @@ export default function Users({ admin }: UsersProps) {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -331,14 +351,6 @@ export default function Users({ admin }: UsersProps) {
                     </td>
                     <td className="px-6 py-4 text-gray-600">{user.department || '-'}</td>
                     <td className="px-6 py-4 text-gray-600">{user.phone || '-'}</td>
-                    <td className="px-6 py-4">
-                      <span className={`
-                        px-3 py-1 rounded-full text-xs font-medium
-                        ${user.email_verified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}
-                      `}>
-                        {user.email_verified ? 'Verified' : 'Pending'}
-                      </span>
-                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <button
