@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from datetime import datetime
@@ -309,17 +309,59 @@ async def _do_refresh_token(refresh_token: str):
 
 
 @router.post("/logout")
-async def logout(access_token: str):
+async def logout(access_token: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
     """
     Logout the user and invalidate the session.
     """
-    supabase = get_supabase()
+    import httpx
+
+    token = access_token
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Access token is required"
+        )
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
     try:
-        supabase.auth.sign_out()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{supabase_url}/auth/v1/logout",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": supabase_key,
+                },
+                params={"scope": "global"},
+            )
+
+            if response.status_code not in [200, 204]:
+                if response.status_code == 401:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid or expired token"
+                    )
+
+                try:
+                    error_data = response.json()
+                    detail = error_data.get("msg") or error_data.get("error_description") or "Logout failed"
+                except Exception:
+                    detail = "Logout failed"
+
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=detail
+                )
+
         return {"message": "Successfully logged out"}
 
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Logout failed: {str(e)}"

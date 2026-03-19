@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production API URL (deployed on Render)
@@ -11,6 +11,58 @@ const API_BASE_URL = 'https://faculty-app-j8ct.onrender.com/api';
 //   : `http://${LOCAL_IP}:8000/api`;
 
 console.log('API URL:', API_BASE_URL); // Debug log
+
+const UNAUTHORIZED_MESSAGE = 'Session ended login again';
+
+let unauthorizedHandler: (() => Promise<void> | void) | null = null;
+let unauthorizedInProgress = false;
+
+export const setUnauthorizedHandler = (handler: (() => Promise<void> | void) | null) => {
+  unauthorizedHandler = handler;
+};
+
+export const logoutFromBackend = async (accessToken?: string | null) => {
+  if (!accessToken) {
+    return;
+  }
+
+  try {
+    await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch (error) {
+    console.warn('[Auth] Backend logout request failed:', error);
+  }
+};
+
+const handleUnauthorized = async () => {
+  if (unauthorizedInProgress) {
+    return;
+  }
+
+  unauthorizedInProgress = true;
+  const token = await AsyncStorage.getItem('token');
+  await logoutFromBackend(token);
+
+  Alert.alert('Session Ended', UNAUTHORIZED_MESSAGE, [
+    {
+      text: 'OK',
+      onPress: () => {
+        Promise.resolve(unauthorizedHandler?.())
+          .catch((error) => console.error('[Auth] Unauthorized handler failed:', error))
+          .finally(() => {
+            unauthorizedInProgress = false;
+          });
+      },
+    },
+  ]);
+};
+
+const isUnauthorized = (response: Response) => response.status === 401 || response.status === 403;
 
 // Helper to get auth headers with JWT token
 const getAuthHeaders = async (): Promise<HeadersInit> => {
@@ -160,7 +212,10 @@ export const getPendingRequests = async () => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error('Failed to fetch requests');
   }
   
@@ -174,8 +229,10 @@ export const getTeacherRequests = async (teacherId: number) => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('Not authorized to view these requests');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error('Failed to fetch teacher requests');
   }
   
@@ -189,8 +246,10 @@ export const getAcceptedRequests = async (teacherId: number) => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('Not authorized to view these requests');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error('Failed to fetch accepted requests');
   }
   
@@ -204,7 +263,10 @@ export const getRequest = async (requestId: number) => {
   });
 
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error(await readErrorMessage(response, 'Failed to fetch request'));
   }
 
@@ -230,8 +292,10 @@ export const createRequest = async (data: {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('You can only create requests for yourself');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error(await readErrorMessage(response, 'Failed to create request'));
   }
   
@@ -251,8 +315,10 @@ export const updateRequest = async (
   });
 
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('You can only update your own requests');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error(await readErrorMessage(response, 'Failed to update request'));
   }
 
@@ -268,8 +334,10 @@ export const acceptRequest = async (requestId: number, teacherId: number) => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('You can only accept requests as yourself');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error(await readErrorMessage(response, 'Failed to accept request'));
   }
   
@@ -285,8 +353,10 @@ export const cancelRequest = async (requestId: number, teacherId: number) => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('You can only cancel your own requests');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error(await readErrorMessage(response, 'Failed to cancel request'));
   }
   
@@ -301,7 +371,10 @@ export const getUsers = async () => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error('Failed to fetch users');
   }
   
@@ -315,8 +388,10 @@ export const getUser = async (userId: number) => {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('Not authorized to view this profile');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     throw new Error('Failed to fetch user');
   }
   
@@ -342,6 +417,10 @@ export const updatePushToken = async (userId: number, pushToken: string) => {
   }
 
   let putErrorDetail = 'Failed to update push token';
+  if (isUnauthorized(putResponse)) {
+    await handleUnauthorized();
+    throw new Error(UNAUTHORIZED_MESSAGE);
+  }
   try {
     const errorJson = await putResponse.json();
     putErrorDetail = errorJson?.detail || putErrorDetail;
@@ -357,6 +436,10 @@ export const updatePushToken = async (userId: number, pushToken: string) => {
   );
 
   if (!postResponse.ok) {
+    if (isUnauthorized(postResponse)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     let postErrorDetail = 'Failed to update push token';
     try {
       const postErrorJson = await postResponse.json();
@@ -379,6 +462,10 @@ export const getPushTokenStatus = async (userId: number) => {
   });
 
   if (!response.ok) {
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     let detail = 'Failed to fetch push token status';
     try {
       const error = await response.json();
@@ -394,11 +481,16 @@ export const getPushTokenStatus = async (userId: number) => {
 
 export const sendPushTokenDebug = async (userId: number, payload: Record<string, unknown>) => {
   const headers = await getAuthHeaders();
-  await fetch(`${API_BASE_URL}/users/${userId}/push-token/debug`, {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/push-token/debug`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
   });
+
+  if (!response.ok && isUnauthorized(response)) {
+    await handleUnauthorized();
+    throw new Error(UNAUTHORIZED_MESSAGE);
+  }
 };
 
 // Update user profile
@@ -415,8 +507,10 @@ export const updateUser = async (userId: number, data: {
   });
   
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Session expired - Please login again');
-    if (response.status === 403) throw new Error('Not authorized to update this profile');
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
     const error = await response.json();
     throw new Error(error.detail || 'Failed to update user');
   }

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { getPushTokenStatus, sendPushTokenDebug, updatePushToken, refreshAuthToken } from '../services/api';
+import { getPushTokenStatus, sendPushTokenDebug, updatePushToken, refreshAuthToken, setUnauthorizedHandler, logoutFromBackend } from '../services/api';
 import { getLastPushDebugState, getPushDebugDetails, initializeNotifications, registerForPushNotificationsAsync } from '../services/notifications';
 
 interface User {
@@ -173,9 +173,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
+    const accessToken = await AsyncStorage.getItem('token');
+    await logoutFromBackend(accessToken);
     setUser(null);
     await AsyncStorage.multiRemove(['user', 'token', 'refreshToken', 'pushToken']);
   };
+
+  useEffect(() => {
+    setUnauthorizedHandler(async () => {
+      await logout();
+    });
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, isLoading, login, logout, updateUserData, refreshSession }}>
