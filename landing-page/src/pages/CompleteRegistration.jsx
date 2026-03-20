@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CheckCircle, AlertCircle, Loader2, Play, Apple } from 'lucide-react';
 
 const API_BASE = 'https://faculty-app-j8ct.onrender.com/api';
 
 const CompleteRegistration = () => {
-  const [searchParams] = useSearchParams();
-  const customToken = searchParams.get('token');
-  const accessToken = searchParams.get('access_token');
-  const errorParam = searchParams.get('error');
+  // NOTE: We intentionally parse from window.location to avoid any
+  // potential issues with router query parsing on redirects.
+  const url = new URL(window.location.href);
+  const customToken = url.searchParams.get('token');
+  const accessToken = url.searchParams.get('access_token');
+  const errorParam = url.searchParams.get('error');
+
+  // Supabase sometimes returns parameters in the hash; include a fallback.
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessTokenFromHash = hashParams.get('access_token');
   
   const [inviteData, setInviteData] = useState(null);
   const [password, setPassword] = useState('');
@@ -22,6 +27,8 @@ const CompleteRegistration = () => {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
+    const finalAccessToken = accessToken || accessTokenFromHash;
+
     if (errorParam) {
       const messages = {
         missing_token: 'Invalid invite link. Please use the link from your invitation email.',
@@ -45,10 +52,10 @@ const CompleteRegistration = () => {
         .then(data => setInviteData(data))
         .catch(err => setError(err.message))
         .finally(() => setLoading(false));
-    } else if (accessToken) {
+    } else if (finalAccessToken) {
       // Supabase flow - backend redirected with access_token in query
-      setSupabaseToken(accessToken);
-      fetch(`${API_BASE}/auth/verify-invite-token?access_token=${encodeURIComponent(accessToken)}`)
+      setSupabaseToken(finalAccessToken);
+      fetch(`${API_BASE}/auth/verify-invite-token?access_token=${encodeURIComponent(finalAccessToken)}`)
         .then(async (res) => {
           if (!res.ok) throw new Error('Invalid or expired invite link');
           return res.json();
@@ -65,7 +72,7 @@ const CompleteRegistration = () => {
       setError('No invite token provided. Please use the exact link from your email.');
       setLoading(false);
     }
-  }, [customToken, accessToken, errorParam]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
