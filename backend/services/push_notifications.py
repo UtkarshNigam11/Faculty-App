@@ -202,3 +202,38 @@ async def notify_user(user_id: int, title: str, body: str, data: dict = None):
         print(f"[PUSH] Error in notify_user: {e}")
         import traceback
         traceback.print_exc()
+
+
+async def notify_faculty_by_ids(user_ids: list[int], title: str, body: str, data: dict = None):
+    """
+    Send notification to specific faculty ids.
+    """
+    if not user_ids:
+        print("[PUSH] No faculty ids provided for targeted notification")
+        return
+
+    supabase = get_supabase()
+
+    try:
+        result = (
+            supabase.table("users")
+            .select("id, name, push_token")
+            .in_("id", user_ids)
+            .execute()
+        )
+
+        tokens = []
+        for user in result.data:
+            token = user.get("push_token")
+            if _is_valid_expo_push_token(token):
+                tokens.append(token)
+                print(f"[PUSH] Target notify: {user['name']} (ID: {user['id']})")
+
+        if tokens:
+            send_push_to_multiple(tokens, title, body, data)
+        else:
+            print("[PUSH] No valid push tokens found for targeted faculty list")
+    except Exception as e:
+        print(f"[PUSH] Error in notify_faculty_by_ids: {e}")
+        import traceback
+        traceback.print_exc()
