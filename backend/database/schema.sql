@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS substitute_requests (
 -- Weekly class schedule table (used for availability filtering)
 CREATE TABLE IF NOT EXISTS teacher_class_schedules (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Monday, 6=Sunday
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
@@ -100,7 +100,7 @@ BEGIN
     ) THEN
         CREATE TABLE teacher_class_schedules (
             id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
             start_time TIME NOT NULL,
             end_time TIME NOT NULL,
@@ -118,6 +118,17 @@ BEGIN
     UPDATE substitute_requests
     SET request_type = COALESCE(request_type, 'class')
     WHERE request_type IS NULL;
+
+    -- Rename old schedule fk column if present.
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'teacher_class_schedules' AND column_name = 'user_id'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'teacher_class_schedules' AND column_name = 'teacher_id'
+    ) THEN
+        ALTER TABLE teacher_class_schedules RENAME COLUMN user_id TO teacher_id;
+    END IF;
     
     -- Make password column nullable (Supabase Auth handles passwords now)
     ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
@@ -137,7 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_users_push_token ON users(push_token);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON substitute_requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_teacher ON substitute_requests(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_requests_date ON substitute_requests(date);
-CREATE INDEX IF NOT EXISTS idx_teacher_schedule_user ON teacher_class_schedules(user_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_schedule_teacher ON teacher_class_schedules(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_teacher_schedule_day ON teacher_class_schedules(day_of_week);
 CREATE INDEX IF NOT EXISTS idx_teacher_schedule_window ON teacher_class_schedules(start_time, end_time);
 

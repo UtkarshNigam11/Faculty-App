@@ -746,9 +746,9 @@ async def upload_class_schedule(
             )
 
         schedule_rows = _extract_schedule_rows(upload_file)
-        payload = [{"user_id": user_id, **row} for row in schedule_rows]
+        payload = [{"teacher_id": user_id, **row} for row in schedule_rows]
 
-        supabase.table("teacher_class_schedules").delete().eq("user_id", user_id).execute()
+        supabase.table("teacher_class_schedules").delete().eq("teacher_id", user_id).execute()
         supabase.table("teacher_class_schedules").insert(payload).execute()
 
         days_covered = sorted({row["day_of_week"] for row in schedule_rows})

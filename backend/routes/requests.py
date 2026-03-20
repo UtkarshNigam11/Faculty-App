@@ -95,14 +95,14 @@ def _get_available_faculty_ids(exclude_user_id: int, request: dict) -> list[int]
     weekday = request_date.weekday()  # Monday=0 ... Sunday=6
 
     conflicts_result = supabase.table("teacher_class_schedules")\
-        .select("user_id")\
-        .in_("user_id", candidate_ids)\
+        .select("teacher_id")\
+        .in_("teacher_id", candidate_ids)\
         .eq("day_of_week", weekday)\
         .lt("start_time", _time_to_db_string(end_time))\
         .gt("end_time", _time_to_db_string(start_time))\
         .execute()
 
-    busy_ids = {row["user_id"] for row in (conflicts_result.data or []) if row.get("user_id") is not None}
+    busy_ids = {row["teacher_id"] for row in (conflicts_result.data or []) if row.get("teacher_id") is not None}
     return [user_id for user_id in candidate_ids if user_id not in busy_ids]
 
 
