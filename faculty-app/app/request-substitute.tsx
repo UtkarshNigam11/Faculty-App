@@ -160,7 +160,11 @@ const RequestSubstituteScreen = () => {
       };
 
       if (isEditing && parsedRequestId) {
-        await updateRequest(parsedRequestId, user.id, payload);
+        const updatePayload =
+          requestType === 'class'
+            ? { ...payload, campus: null }
+            : { ...payload, subject: null, classroom: null };
+        await updateRequest(parsedRequestId, user.id, updatePayload);
       } else {
         await createRequest({
           teacher_id: user.id,

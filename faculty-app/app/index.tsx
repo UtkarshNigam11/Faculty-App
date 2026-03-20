@@ -104,8 +104,8 @@ const HomeScreen = () => {
       const myPending = myRequests.filter((r: any) => r.status === 'pending').length;
       const pendingFromOthers = pendingRequests.filter((r: any) => r.teacher_id !== user.id).length;
 
-      // Dashboard counters should represent requests available in the pool, excluding self-created requests.
-      setPendingCount(pendingFromOthers);
+      // Pending card should show only the current user's pending requests.
+      setPendingCount(myPending);
       setAvailableCount(pendingFromOthers);
       setMyPendingCount(myPending);
     } catch (error) {
@@ -168,7 +168,7 @@ const HomeScreen = () => {
         <View style={styles.statsContainer}>
           <View style={[styles.statCard, styles.statCardGreen]}>
             <Text style={styles.statNumber}>{pendingCount}</Text>
-            <Text style={styles.statLabel}>Pending Requests</Text>
+            <Text style={styles.statLabel}>My Pending Requests</Text>
           </View>
           <View style={[styles.statCard, styles.statCardWhite]}>
             <Text style={[styles.statNumber, styles.statNumberDark]}>{availableCount}</Text>

@@ -104,13 +104,13 @@ export type SubstituteRequest = {
 
 type SubstituteRequestPayload = {
   request_type: SubstituteRequestType;
-  subject?: string;
+  subject?: string | null;
   date: string;
   time: string;
   duration: number;
-  classroom?: string;
-  campus?: string;
-  notes?: string;
+  classroom?: string | null;
+  campus?: string | null;
+  notes?: string | null;
 };
 
 const readErrorMessage = async (response: Response, fallback: string) => {

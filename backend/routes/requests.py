@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query, status, Depends
+from fastapi import APIRouter, HTTPException, Query, status, Depends, Body
 from typing import List
 from datetime import datetime, date as date_type, time as time_type, timedelta
+from pydantic import ValidationError
 
 from database import get_supabase
 from models import (
@@ -570,7 +571,7 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
 @router.put("/{request_id}", response_model=SubstituteRequestResponse)
 async def update_request(
     request_id: int,
-    request_update: SubstituteRequestUpdate,
+    request_update: dict = Body(...),
     teacher_id: int = Query(...),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -606,7 +607,42 @@ async def update_request(
                 detail="Only active requests can be updated"
             )
 
-        update_data = request_update.model_dump(exclude_unset=True)
+        if not isinstance(request_update, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid update payload"
+            )
+
+        allowed_fields = {
+            "request_type",
+            "subject",
+            "date",
+            "time",
+            "duration",
+            "classroom",
+            "campus",
+            "notes",
+        }
+
+        normalized_update = {}
+        for key, value in request_update.items():
+            if key not in allowed_fields:
+                continue
+            if isinstance(value, str):
+                value = value.strip()
+                if key in {"subject", "classroom", "campus", "notes"} and value == "":
+                    value = None
+            normalized_update[key] = value
+
+        try:
+            update_data = SubstituteRequestUpdate(**normalized_update).model_dump(exclude_unset=True)
+        except ValidationError as e:
+            first_error = e.errors()[0] if e.errors() else None
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(first_error.get("msg") if first_error else "Invalid update payload"),
+            )
+
         if not update_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
