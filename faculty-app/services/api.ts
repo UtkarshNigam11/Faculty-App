@@ -116,9 +116,34 @@ type SubstituteRequestPayload = {
 const readErrorMessage = async (response: Response, fallback: string) => {
   try {
     const error = await response.json();
-    return error.detail || fallback;
-  } catch {
+    const detail = error?.detail;
+
+    if (Array.isArray(detail)) {
+      return detail
+        .map((entry) => {
+          if (typeof entry === 'string') return entry;
+          if (entry?.msg) return String(entry.msg);
+          return JSON.stringify(entry);
+        })
+        .join('; ');
+    }
+
+    if (typeof detail === 'string') {
+      return detail;
+    }
+
+    if (detail && typeof detail === 'object') {
+      return JSON.stringify(detail);
+    }
+
     return fallback;
+  } catch {
+    try {
+      const text = await response.text();
+      return text || fallback;
+    } catch {
+      return fallback;
+    }
   }
 };
 
@@ -524,20 +549,34 @@ export const updateUser = async (userId: number, data: {
 
 export const uploadClassSchedule = async (
   userId: number,
-  file: { uri: string; name: string; mimeType?: string | null }
+  file: { uri: string; name: string; mimeType?: string | null; webFile?: File | Blob | null }
 ) => {
   const token = await getAccessToken();
   const formData = new FormData();
+  const contentType = file.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-  const filePart = {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  } as any;
+  if (Platform.OS === 'web') {
+    let browserFile: File | Blob;
+    if (file.webFile) {
+      browserFile = file.webFile;
+    } else {
+      const blobResponse = await fetch(file.uri);
+      browserFile = await blobResponse.blob();
+    }
 
-  // Keep both keys for backward compatibility with deployed backends.
-  formData.append('schedule_file', filePart);
-  formData.append('file', filePart);
+    formData.append('schedule_file', browserFile, file.name);
+    formData.append('file', browserFile, file.name);
+  } else {
+    const filePart = {
+      uri: file.uri,
+      name: file.name,
+      type: contentType,
+    } as any;
+
+    // Keep both keys for backward compatibility with deployed backends.
+    formData.append('schedule_file', filePart);
+    formData.append('file', filePart);
+  }
 
   const response = await fetch(`${API_BASE_URL}/users/${userId}/class-schedule/upload`, {
     method: 'POST',

@@ -58,6 +58,7 @@ const AccountScreen = () => {
         uri: pickedFile.uri,
         name: pickedFile.name,
         mimeType: pickedFile.mimeType,
+        webFile: (pickedFile as any).file ?? null,
       });
 
       setSelectedScheduleFile(pickedFile.name);
