@@ -12,14 +12,35 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import * as DocumentPicker from 'expo-document-picker';
-import { useState } from 'react';
-import { uploadClassSchedule } from '../services/api';
+import { useEffect, useState } from 'react';
+import { getClassSchedule, uploadClassSchedule } from '../services/api';
 
 const AccountScreen = () => {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [selectedScheduleFile, setSelectedScheduleFile] = useState<string | null>(null);
   const [isUploadingSchedule, setIsUploadingSchedule] = useState(false);
+  const [hasUploadedSchedule, setHasUploadedSchedule] = useState(false);
+  const [scheduleSlotCount, setScheduleSlotCount] = useState(0);
+
+  useEffect(() => {
+    const loadScheduleState = async () => {
+      if (!user?.id) {
+        return;
+      }
+
+      try {
+        const items = await getClassSchedule(user.id);
+        setHasUploadedSchedule(items.length > 0);
+        setScheduleSlotCount(items.length);
+      } catch (error) {
+        // Keep account page usable even if schedule endpoint is not available.
+        console.log('Could not load schedule status:', error);
+      }
+    };
+
+    loadScheduleState();
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await logout();
@@ -62,6 +83,8 @@ const AccountScreen = () => {
       });
 
       setSelectedScheduleFile(pickedFile.name);
+      setHasUploadedSchedule(true);
+      setScheduleSlotCount(uploadResult.total_slots ?? 0);
       alert(`Schedule uploaded successfully. Total slots: ${uploadResult.total_slots ?? 0}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to upload schedule. Please try again.';
@@ -217,17 +240,24 @@ const AccountScreen = () => {
               {isUploadingSchedule ? (
                 <>
                   <ActivityIndicator size="small" color="#0F766E" style={{ marginRight: 8 }} />
-                  <Text style={styles.uploadButtonText}>Uploading schedule...</Text>
+                  <Text style={styles.uploadButtonText}>
+                    {hasUploadedSchedule ? 'Updating schedule...' : 'Uploading schedule...'}
+                  </Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={20} color="#0F766E" style={{ marginRight: 8 }} />
-                  <Text style={styles.uploadButtonText}>Upload class schedule</Text>
+                  <Text style={styles.uploadButtonText}>
+                    {hasUploadedSchedule ? 'Update class schedule' : 'Upload class schedule'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
 
             <Text style={styles.uploadHint}>Accepted format: .xlsx</Text>
+            {hasUploadedSchedule && (
+              <Text style={styles.scheduleStatusText}>Current schedule slots: {scheduleSlotCount}</Text>
+            )}
             {selectedScheduleFile && (
               <Text style={styles.selectedFileText}>Selected: {selectedScheduleFile}</Text>
             )}
@@ -421,6 +451,13 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 10,
     marginHorizontal: 12,
+  },
+  scheduleStatusText: {
+    fontSize: 13,
+    color: '#0F766E',
+    marginTop: 6,
+    marginHorizontal: 12,
+    fontWeight: '600',
   },
   selectedFileText: {
     fontSize: 13,

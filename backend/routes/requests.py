@@ -606,10 +606,26 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
             "subject": schedule_subject,
             "substitute_request_id": request_id,
         }
-        
-        schedule_result = supabase.table("teacher_class_schedules")\
-            .insert(schedule_entry)\
-            .execute()
+
+        try:
+            schedule_result = supabase.table("teacher_class_schedules")\
+                .insert(schedule_entry)\
+                .execute()
+        except Exception as schedule_error:
+            # Backward compatibility: older DB may not have substitute_request_id yet.
+            if "substitute_request_id" in str(schedule_error):
+                legacy_entry = {
+                    "teacher_id": accept_data.teacher_id,
+                    "day_of_week": weekday,
+                    "start_time": _time_to_db_string(start_time),
+                    "end_time": _time_to_db_string(end_time),
+                    "subject": schedule_subject,
+                }
+                schedule_result = supabase.table("teacher_class_schedules")\
+                    .insert(legacy_entry)\
+                    .execute()
+            else:
+                raise
         
         if not schedule_result.data:
             # Log the error but don't fail the acceptance - the request is already accepted
@@ -819,10 +835,28 @@ async def cancel_request(request_id: int, cancel_data: CancelRequest, current_us
         
         # Remove the schedule entry for the acceptor if request was accepted
         if original_request.get("accepted_by"):
-            supabase.table("teacher_class_schedules")\
-                .delete()\
-                .eq("substitute_request_id", request_id)\
-                .execute()
+            try:
+                supabase.table("teacher_class_schedules")\
+                    .delete()\
+                    .eq("substitute_request_id", request_id)\
+                    .execute()
+            except Exception as cleanup_error:
+                if "substitute_request_id" not in str(cleanup_error):
+                    raise
+
+                # Legacy fallback: remove likely matching slot by teacher/day/time.
+                fallback_date = _parse_request_date(original_request.get("date"))
+                fallback_start, fallback_end = _compute_time_window(
+                    original_request.get("time"),
+                    original_request.get("duration"),
+                )
+                supabase.table("teacher_class_schedules")\
+                    .delete()\
+                    .eq("teacher_id", original_request["accepted_by"])\
+                    .eq("day_of_week", fallback_date.weekday())\
+                    .eq("start_time", _time_to_db_string(fallback_start))\
+                    .eq("end_time", _time_to_db_string(fallback_end))\
+                    .execute()
         
         # If request was accepted by someone, notify them about cancellation
         if original_request.get("accepted_by"):

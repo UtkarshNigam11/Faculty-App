@@ -806,12 +806,24 @@ async def get_class_schedule(
                 detail="User not found"
             )
 
-        schedule_result = supabase.table("teacher_class_schedules")\
-            .select("id, teacher_id, day_of_week, start_time, end_time, subject, substitute_request_id")\
-            .eq("teacher_id", user_id)\
-            .order("day_of_week", desc=False)\
-            .order("start_time", desc=False)\
-            .execute()
+        try:
+            schedule_result = supabase.table("teacher_class_schedules")\
+                .select("id, teacher_id, day_of_week, start_time, end_time, subject, substitute_request_id")\
+                .eq("teacher_id", user_id)\
+                .order("day_of_week", desc=False)\
+                .order("start_time", desc=False)\
+                .execute()
+        except Exception as schedule_error:
+            # Backward compatibility: older DB may not have substitute_request_id yet.
+            if "substitute_request_id" not in str(schedule_error):
+                raise
+
+            schedule_result = supabase.table("teacher_class_schedules")\
+                .select("id, teacher_id, day_of_week, start_time, end_time, subject")\
+                .eq("teacher_id", user_id)\
+                .order("day_of_week", desc=False)\
+                .order("start_time", desc=False)\
+                .execute()
 
         schedules = [
             ClassScheduleItem(

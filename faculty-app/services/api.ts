@@ -45,8 +45,6 @@ const handleUnauthorized = async () => {
   }
 
   unauthorizedInProgress = true;
-  const token = await AsyncStorage.getItem('token');
-  await logoutFromBackend(token);
 
   Alert.alert('Session Ended', UNAUTHORIZED_MESSAGE, [
     {
@@ -618,7 +616,17 @@ export const getClassSchedule = async (userId: number) => {
       await handleUnauthorized();
       throw new Error(UNAUTHORIZED_MESSAGE);
     }
-    throw new Error('Failed to fetch class schedule');
+
+    // Backward-compatible behavior for older deployments where this route may not exist yet.
+    if (response.status === 404) {
+      const detail = await readErrorMessage(response, 'Schedule endpoint not available');
+      if (detail.toLowerCase().includes('user not found')) {
+        throw new Error(detail);
+      }
+      return [] as ClassScheduleItem[];
+    }
+
+    throw new Error(await readErrorMessage(response, 'Failed to fetch class schedule'));
   }
   
   return response.json() as Promise<ClassScheduleItem[]>;
