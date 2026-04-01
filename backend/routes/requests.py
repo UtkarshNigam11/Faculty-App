@@ -483,6 +483,7 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
     """
     Accept a pending substitute request.
     Users can only accept requests as themselves.
+    Validation: Teacher cannot have an existing class or accepted request at the same time.
     """
     # Users can only accept requests as themselves
     if current_user.token_type != "admin" and current_user.user_id != accept_data.teacher_id:
@@ -527,6 +528,53 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
         acceptor_name = acceptor_result.data[0]["name"]
         original_request = check_result.data[0]
         
+        # Validation: Check if teacher already has a class at this time
+        request_date = _parse_request_date(original_request.get("date"))
+        request_time = original_request.get("time")
+        duration = original_request.get("duration")
+        start_time, end_time = _compute_time_window(request_time, duration)
+        weekday = request_date.weekday()  # Monday=0 ... Sunday=6
+        
+        # Check for schedule conflict with teacher's regular classes
+        schedule_conflict = supabase.table("teacher_class_schedules")\
+            .select("id, day_of_week, start_time, end_time")\
+            .eq("teacher_id", accept_data.teacher_id)\
+            .eq("day_of_week", weekday)\
+            .lt("start_time", _time_to_db_string(end_time))\
+            .gt("end_time", _time_to_db_string(start_time))\
+            .execute()
+        
+        if schedule_conflict.data and len(schedule_conflict.data) > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You already have a class scheduled at this time"
+            )
+        
+        # Check for conflict with already accepted requests
+        accepted_conflict = supabase.table("substitute_requests")\
+            .select("id, date, time, duration")\
+            .eq("accepted_by", accept_data.teacher_id)\
+            .eq("status", "accepted")\
+            .execute()
+        
+        for req in (accepted_conflict.data or []):
+            other_date = _parse_request_date(req.get("date"))
+            other_weekday = other_date.weekday()
+            
+            # Only check if on the same day
+            if other_weekday == weekday:
+                other_time = req.get("time")
+                other_duration = req.get("duration")
+                other_start, other_end = _compute_time_window(other_time, other_duration)
+                
+                # Check for time overlap
+                if not (_time_to_db_string(end_time) <= _time_to_db_string(other_start) or 
+                        _time_to_db_string(start_time) >= _time_to_db_string(other_end)):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="You have already accepted another request at this time"
+                    )
+        
         # Accept the request
         result = supabase.table("substitute_requests")\
             .update({
@@ -544,6 +592,28 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
             )
         
         req = result.data[0]
+        
+        # Add schedule entry for the acceptor showing the substitute class
+        schedule_subject = req.get("subject") or f"Substitute - {req.get('campus', 'TBD')}"
+        if req.get("request_type") == "exam":
+            schedule_subject = f"Exam Duty - {req.get('campus', 'Campus TBD')}"
+        
+        schedule_entry = {
+            "teacher_id": accept_data.teacher_id,
+            "day_of_week": weekday,
+            "start_time": _time_to_db_string(start_time),
+            "end_time": _time_to_db_string(end_time),
+            "subject": schedule_subject,
+            "substitute_request_id": request_id,
+        }
+        
+        schedule_result = supabase.table("teacher_class_schedules")\
+            .insert(schedule_entry)\
+            .execute()
+        
+        if not schedule_result.data:
+            # Log the error but don't fail the acceptance - the request is already accepted
+            print(f"Warning: Failed to add schedule entry for substitute request {request_id}")
         
         # Notify the original requester that their request was accepted
         await notify_user(
@@ -746,6 +816,13 @@ async def cancel_request(request_id: int, cancel_data: CancelRequest, current_us
             )
         
         req = result.data[0]
+        
+        # Remove the schedule entry for the acceptor if request was accepted
+        if original_request.get("accepted_by"):
+            supabase.table("teacher_class_schedules")\
+                .delete()\
+                .eq("substitute_request_id", request_id)\
+                .execute()
         
         # If request was accepted by someone, notify them about cancellation
         if original_request.get("accepted_by"):

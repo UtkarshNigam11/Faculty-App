@@ -245,6 +245,21 @@ const HomeScreen = () => {
           <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => router.push('/view-schedule')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIconContainer, styles.actionIconTeal]}>
+            <Ionicons name="calendar" size={24} color="#0D9488" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>My Schedule</Text>
+            <Text style={styles.actionSubtitle}>View your class schedule</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
         <View style={styles.bottomPadding} />
       </ScrollView>
 
@@ -418,6 +433,9 @@ const styles = StyleSheet.create({
   },
   actionIconGreen: {
     backgroundColor: '#D1FAE5',
+  },
+  actionIconTeal: {
+    backgroundColor: '#CCFBF1',
   },
   actionIconPlus: {
     fontSize: 28,

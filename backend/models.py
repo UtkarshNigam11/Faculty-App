@@ -140,6 +140,20 @@ class CancelRequest(BaseModel):
     teacher_id: int
 
 
+# Class Schedule Models
+class ClassScheduleItem(BaseModel):
+    id: int
+    teacher_id: int
+    day_of_week: int  # 0=Monday, 6=Sunday
+    start_time: str  # HH:MM:SS format
+    end_time: str  # HH:MM:SS format
+    subject: Optional[str] = None
+    substitute_request_id: Optional[int] = None  # If this schedule is from an accepted substitute request
+
+    class Config:
+        from_attributes = True
+
+
 # Token models for Supabase authentication
 class Token(BaseModel):
     access_token: str

@@ -596,3 +596,30 @@ export const uploadClassSchedule = async (
 
   return response.json();
 };
+
+export type ClassScheduleItem = {
+  id: number;
+  teacher_id: number;
+  day_of_week: number; // 0 = Monday, 6 = Sunday
+  start_time: string; // HH:MM:SS format
+  end_time: string; // HH:MM:SS format
+  subject?: string | null;
+  substitute_request_id?: number | null; // If this is from an accepted substitute request
+};
+
+export const getClassSchedule = async (userId: number) => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/class-schedule`, {
+    headers
+  });
+  
+  if (!response.ok) {
+    if (isUnauthorized(response)) {
+      await handleUnauthorized();
+      throw new Error(UNAUTHORIZED_MESSAGE);
+    }
+    throw new Error('Failed to fetch class schedule');
+  }
+  
+  return response.json() as Promise<ClassScheduleItem[]>;
+};

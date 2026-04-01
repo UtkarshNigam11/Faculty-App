@@ -132,6 +132,12 @@ BEGIN
     
     -- Make password column nullable (Supabase Auth handles passwords now)
     ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+
+    -- Add substitute_request_id column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'teacher_class_schedules' AND column_name = 'substitute_request_id') THEN
+        ALTER TABLE teacher_class_schedules ADD COLUMN substitute_request_id INTEGER REFERENCES substitute_requests(id) ON DELETE CASCADE;
+    END IF;
 EXCEPTION
     WHEN others THEN
         -- Ignore errors (column might already be nullable)

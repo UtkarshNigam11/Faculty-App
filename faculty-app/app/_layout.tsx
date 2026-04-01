@@ -134,6 +134,7 @@ const RootLayout = () => {
         <Stack.Screen name="index" />
         <Stack.Screen name="request-substitute" />
         <Stack.Screen name="view-requests" />
+        <Stack.Screen name="view-schedule" />
         <Stack.Screen name="my-requests" />
         <Stack.Screen name="account" />
         <Stack.Screen name="forgot-password" />

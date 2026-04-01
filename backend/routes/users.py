@@ -6,7 +6,7 @@ from datetime import datetime, time, timedelta
 from openpyxl import load_workbook
 
 from database import get_supabase
-from models import UserResponse, UserUpdate, PushTokenUpdate
+from models import UserResponse, UserUpdate, PushTokenUpdate, ClassScheduleItem
 from middleware.auth import get_current_user, get_current_admin, get_super_admin, TokenData
 
 router = APIRouter()
@@ -774,6 +774,66 @@ async def upload_class_schedule(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload class schedule: {str(e)}"
+        )
+
+
+@router.get("/{user_id}/class-schedule", response_model=List[ClassScheduleItem])
+async def get_class_schedule(
+    user_id: int,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """
+    Get a teacher's weekly class schedule.
+    Users can only view their own schedule, admins can view any.
+    """
+    if current_user.token_type != "admin" and current_user.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this schedule"
+        )
+
+    supabase = get_supabase()
+
+    try:
+        user_exists = supabase.table("users")\
+            .select("id")\
+            .eq("id", user_id)\
+            .execute()
+
+        if not user_exists.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        schedule_result = supabase.table("teacher_class_schedules")\
+            .select("id, teacher_id, day_of_week, start_time, end_time, subject, substitute_request_id")\
+            .eq("teacher_id", user_id)\
+            .order("day_of_week", desc=False)\
+            .order("start_time", desc=False)\
+            .execute()
+
+        schedules = [
+            ClassScheduleItem(
+                id=item["id"],
+                teacher_id=item["teacher_id"],
+                day_of_week=item["day_of_week"],
+                start_time=item["start_time"],
+                end_time=item["end_time"],
+                subject=item.get("subject"),
+                substitute_request_id=item.get("substitute_request_id"),
+            )
+            for item in (schedule_result.data or [])
+        ]
+
+        return schedules
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch class schedule: {str(e)}"
         )
 
 
