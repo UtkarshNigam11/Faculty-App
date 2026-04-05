@@ -3,7 +3,7 @@ import {
   Text,
   View,
   StyleSheet,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
@@ -27,7 +27,7 @@ const ViewScheduleScreen = () => {
 
   const fetchSchedule = async () => {
     if (!user) return;
-    
+
     try {
       setError(null);
       const data = await getClassSchedule(user.id);
@@ -75,41 +75,42 @@ const ViewScheduleScreen = () => {
     return grouped;
   };
 
-  const renderScheduleItem = ({ item }: { item: ClassScheduleItem }) => (
-    <View style={styles.scheduleCard}>
-      <View style={[styles.scheduleDayHeader, item.substitute_request_id ? styles.headerSubstitute : {}]}>
-        <View style={styles.headerContent}>
-          <Text style={styles.dayText}>{DAY_NAMES[item.day_of_week]}</Text>
-          {item.substitute_request_id && (
-            <View style={styles.substituteTag}>
-              <Ionicons name="swap-horizontal" size={12} color="#FFFFFF" />
-              <Text style={styles.substituteTagText}>Substitute</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      
-      <View style={styles.scheduleContent}>
-        <View style={styles.timeContainer}>
-          <Ionicons name="time-outline" size={18} color="#6B7280" />
-          <Text style={styles.timeText}>
-            {formatTime(item.start_time)} - {formatTime(item.end_time)}
-          </Text>
-        </View>
-        
-        {item.subject && (
-          <View style={styles.subjectContainer}>
-            <Ionicons name="book-outline" size={18} color="#6B7280" />
-            <Text style={styles.subjectText}>{item.subject}</Text>
-          </View>
-        )}
+  const sectionedSchedule = Object.keys(groupScheduleByDay())
+    .map((day) => ({
+      title: DAY_NAMES[parseInt(day)],
+      data: groupScheduleByDay()[parseInt(day)].sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    }))
+    .sort((a, b) => DAY_NAMES.indexOf(a.title) - DAY_NAMES.indexOf(b.title));
 
-        {item.classroom && (
-          <View style={[styles.subjectContainer, { marginTop: 4 }]}>
-            <Ionicons name="business-outline" size={18} color="#6B7280" />
-            <Text style={styles.subjectText}>{item.classroom}</Text>
-          </View>
-        )}
+  const renderScheduleItem = ({ item }: { item: ClassScheduleItem }) => {
+    let section = '-';
+    let subject = item.subject || '-';
+    if (item.subject && item.subject.includes(' - ')) {
+      const parts = item.subject.split(' - ');
+      section = parts[0];
+      subject = parts.slice(1).join(' - ');
+    }
+
+    return (
+      <View style={[styles.tableRow, item.substitute_request_id ? styles.tableRowSubstitute : null]}>
+        <Text style={[styles.tableCell, styles.timeCell]}>
+          {formatTime(item.start_time)}{'\n'}-{formatTime(item.end_time)}
+        </Text>
+        <Text style={[styles.tableCell, styles.sectionCell]}>{section}</Text>
+        <Text style={[styles.tableCell, styles.subjectCell]}>{subject}</Text>
+        <Text style={[styles.tableCell, styles.roomCell]}>{item.classroom || '-'}</Text>
+      </View>
+    );
+  };
+
+  const renderSectionHeader = ({ section: { title } }: any) => (
+    <View style={styles.sectionHeaderContainer}>
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+      <View style={styles.tableHeader}>
+        <Text style={[styles.tableHeaderCell, styles.timeCell]}>Time</Text>
+        <Text style={[styles.tableHeaderCell, styles.sectionCell]}>Sec</Text>
+        <Text style={[styles.tableHeaderCell, styles.subjectCell]}>Subject</Text>
+        <Text style={[styles.tableHeaderCell, styles.roomCell]}>Room</Text>
       </View>
     </View>
   );
@@ -127,7 +128,7 @@ const ViewScheduleScreen = () => {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#1E3A5F" />
         <View style={styles.header}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
             activeOpacity={0.7}
@@ -147,9 +148,9 @@ const ViewScheduleScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1E3A5F" />
-      
+
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
@@ -164,7 +165,7 @@ const ViewScheduleScreen = () => {
         <View style={styles.centerContent}>
           <Ionicons name="warning-outline" size={48} color="#EF4444" />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
             onPress={fetchSchedule}
           >
@@ -178,9 +179,10 @@ const ViewScheduleScreen = () => {
           <Text style={styles.emptySubText}>Upload your class schedule from the account page</Text>
         </View>
       ) : (
-        <FlatList
-          data={schedule}
+        <SectionList
+          sections={sectionedSchedule}
           renderItem={renderScheduleItem}
+          renderSectionHeader={renderSectionHeader}
           keyExtractor={(item) => `${item.id}`}
           contentContainerStyle={styles.listContent}
           refreshControl={
@@ -192,6 +194,7 @@ const ViewScheduleScreen = () => {
             />
           }
           showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={true}
         />
       )}
     </SafeAreaView>
@@ -232,75 +235,77 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 24,
   },
-  scheduleCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 12,
+  sectionHeaderContainer: {
+    backgroundColor: '#0F766E',
+    marginTop: 16,
+    marginHorizontal: 12,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
     elevation: 2,
   },
-  scheduleDayHeader: {
+  sectionHeaderText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+    backgroundColor: '#0d635c',
+  },
+  tableHeader: {
+    flexDirection: 'row',
     backgroundColor: '#0F766E',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  headerSubstitute: {
-    backgroundColor: '#7C3AED',
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dayText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  substituteTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 8,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#0d635c',
   },
-  substituteTagText: {
+  tableHeaderCell: {
     color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '600',
-    marginLeft: 4,
+    fontWeight: 'bold',
+    fontSize: 12,
   },
-  scheduleContent: {
-    paddingHorizontal: 16,
+  tableRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+  tableRowSubstitute: {
+    backgroundColor: '#F5F3FF',
   },
-  timeText: {
-    marginLeft: 10,
-    fontSize: 14,
+  tableCell: {
+    fontSize: 12,
+    color: '#374151',
+  },
+  timeCell: {
+    width: '25%',
+    textAlign: 'center',
+  },
+  sectionCell: {
+    width: '15%',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  subjectCell: {
+    width: '40%',
+    paddingHorizontal: 4,
+  },
+  roomCell: {
+    width: '20%',
+    textAlign: 'center',
     fontWeight: '500',
-    color: '#1F2937',
-  },
-  subjectContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  subjectText: {
-    marginLeft: 10,
-    fontSize: 13,
-    color: '#6B7280',
+    color: '#4F46E5',
   },
   errorText: {
     fontSize: 16,

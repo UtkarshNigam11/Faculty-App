@@ -197,12 +197,16 @@ def _extract_matrix_schedule_rows(rows: list[tuple], file_name: str) -> list[dic
             subject_text = cell_str
             classroom_text = None
             
-            # If the cell has multiple lines, assume the last line might be the room number
-            if '\n' in cell_str:
-                parts = [p.strip() for p in cell_str.split('\n') if p.strip()]
-                if len(parts) > 1:
-                    subject_text = ' '.join(parts[:-1])
-                    classroom_text = parts[-1]
+            # Handle comma separated format: Section, Subject, Classroom, ...
+            if ',' in cell_str:
+                parts = [p.strip() for p in cell_str.split(',') if p.strip()]
+                if len(parts) >= 3:
+                    subject_text = f"{parts[0]} - {parts[1]}"
+                    classroom_text = parts[2]
+                elif len(parts) == 2:
+                    subject_text = parts[0]
+                    classroom_text = parts[1]
+            elif '\n' in cell_str:
 
             if len(subject_text) > 120:
                 subject_text = subject_text[:120]
