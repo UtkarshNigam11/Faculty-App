@@ -17,6 +17,29 @@ router = APIRouter()
 LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "https://faculty-app-landing.pages.dev")
 
 
+def _map_login_error(error: Exception) -> HTTPException | None:
+    """Map provider/auth errors to stable HTTP responses for the client."""
+    message = str(error).strip().lower()
+
+    if (
+        "invalid login credentials" in message
+        or ("invalid" in message and "credential" in message)
+        or "invalid email or password" in message
+    ):
+        return HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+
+    if "email not confirmed" in message or "not confirmed" in message or "verify your email" in message:
+        return HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please check your inbox and verify your email first."
+        )
+
+    return None
+
+
 # Model for complete registration
 class CompleteRegistrationRequest(BaseModel):
     token: str  # Invite token
@@ -122,10 +145,16 @@ async def login(credentials: UserLogin):
 
     try:
         # Sign in with Supabase Auth
-        auth_response = supabase.auth.sign_in_with_password({
-            "email": credentials.email,
-            "password": credentials.password
-        })
+        try:
+            auth_response = supabase.auth.sign_in_with_password({
+                "email": credentials.email,
+                "password": credentials.password
+            })
+        except Exception as e:
+            mapped = _map_login_error(e)
+            if mapped is not None:
+                raise mapped
+            raise
 
         if auth_response.user is None or auth_response.session is None:
             raise HTTPException(
@@ -147,12 +176,6 @@ async def login(credentials: UserLogin):
         user_data = None
         if user_result.data and len(user_result.data) > 0:
             user_data = user_result.data[0]
-
-            # Update email_verified status if needed
-            if not user_data.get("email_verified"):
-                supabase.table("users").update({"email_verified": True}).eq(
-                    "email", credentials.email).execute()
-                user_data["email_verified"] = True
         else:
             # Create user record if it doesn't exist (for users who signed up before this update)
             user_metadata = auth_response.user.user_metadata or {}
@@ -164,10 +187,14 @@ async def login(credentials: UserLogin):
                 "phone": user_metadata.get("phone"),
                 "email_verified": True
             }
-            insert_result = supabase.table(
-                "users").insert(new_user_data).execute()
-            if insert_result.data:
-                user_data = insert_result.data[0]
+            try:
+                insert_result = supabase.table(
+                    "users").insert(new_user_data).execute()
+                if insert_result.data:
+                    user_data = insert_result.data[0]
+            except Exception:
+                # Do not fail login if profile sync fails on older schema.
+                user_data = None
 
         return Token(
             access_token=auth_response.session.access_token,
@@ -188,17 +215,9 @@ async def login(credentials: UserLogin):
         )
 
     except AuthApiError as e:
-        error_message = str(e).lower()
-        if "invalid" in error_message or "credentials" in error_message:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
-            )
-        elif "not confirmed" in error_message or "verify" in error_message:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Email not verified. Please check your inbox and verify your email first."
-            )
+        mapped = _map_login_error(e)
+        if mapped is not None:
+            raise mapped
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)

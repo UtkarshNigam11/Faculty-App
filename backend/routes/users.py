@@ -784,13 +784,26 @@ async def upload_class_schedule(
                 "end_time": row["end_time"],
                 "subject": row.get("subject"),
                 "classroom": row.get("classroom"),
-                "source_file": row.get("source_file"),
             }
             for row in schedule_rows
         ]
 
-        supabase.table("teacher_class_schedules").delete().eq("teacher_id", user_id).execute()
-        supabase.table("teacher_class_schedules").insert(payload).execute()
+        try:
+            supabase.table("teacher_class_schedules").delete().eq("teacher_id", user_id).execute()
+            supabase.table("teacher_class_schedules").insert(payload).execute()
+        except Exception as db_error:
+            error_text = str(db_error).lower()
+            if "teacher_class_schedules" in error_text and ("subject" in error_text or "classroom" in error_text):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Schedule table is missing subject/classroom columns. Run the latest schema migration and retry upload."
+                )
+            if "violates" in error_text or "constraint" in error_text:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid schedule data: {str(db_error)}"
+                )
+            raise
 
         days_covered = sorted({row["day_of_week"] for row in schedule_rows})
         return {
@@ -806,7 +819,7 @@ async def upload_class_schedule(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload class schedule: {str(e)}"
+            detail="Failed to upload class schedule due to an unexpected server error"
         )
 
 
