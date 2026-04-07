@@ -62,6 +62,14 @@ const RequestSubstituteScreen = () => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCampusDropdown, setShowCampusDropdown] = useState(false);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/index');
+  };
+
   useEffect(() => {
     const loadRequest = async () => {
       if (!parsedRequestId || !user) {
@@ -74,7 +82,7 @@ const RequestSubstituteScreen = () => {
 
         if (existingRequest.teacher_id !== user.id) {
           Alert.alert('Error', 'You can only edit your own request.');
-          router.back();
+          handleBack();
           return;
         }
 
@@ -93,7 +101,7 @@ const RequestSubstituteScreen = () => {
         setNotes(existingRequest.notes || '');
       } catch (error: any) {
         Alert.alert('Error', error.message || 'Failed to load request details');
-        router.back();
+        handleBack();
       } finally {
         setIsFetching(false);
       }
@@ -175,7 +183,7 @@ const RequestSubstituteScreen = () => {
       Alert.alert(
         'Success',
         isEditing ? 'Your substitute request has been updated.' : 'Your substitute request has been submitted.',
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: handleBack }]
       );
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to save request');
@@ -200,7 +208,7 @@ const RequestSubstituteScreen = () => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#374151" />

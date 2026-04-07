@@ -22,6 +22,14 @@ const ForgotPasswordScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/login');
+  };
+
   const handleResetPassword = async () => {
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email address');
@@ -59,7 +67,7 @@ const ForgotPasswordScreen = () => {
         <View style={styles.header}>
           <TouchableOpacity 
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={handleBack}
             activeOpacity={0.7}
           >
             <Ionicons name="chevron-back" size={24} color="#374151" />
@@ -108,7 +116,7 @@ const ForgotPasswordScreen = () => {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#374151" />
@@ -176,7 +184,7 @@ const ForgotPasswordScreen = () => {
           {/* Back to Login */}
           <TouchableOpacity 
             style={styles.loginLink}
-            onPress={() => router.back()}
+            onPress={handleBack}
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-back" size={18} color="#10B981" style={{ marginRight: 6 }} />

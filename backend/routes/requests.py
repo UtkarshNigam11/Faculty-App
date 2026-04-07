@@ -603,7 +603,10 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
             "day_of_week": weekday,
             "start_time": _time_to_db_string(start_time),
             "end_time": _time_to_db_string(end_time),
-            "subject": schedule_subject,            "classroom": req.get("classroom"),            "substitute_request_id": request_id,
+            "slot_date": request_date.isoformat(),
+            "subject": schedule_subject,
+            "classroom": req.get("classroom"),
+            "substitute_request_id": request_id,
         }
 
         try:
@@ -611,16 +614,18 @@ async def accept_request(request_id: int, accept_data: AcceptRequest, current_us
                 .insert(schedule_entry)\
                 .execute()
         except Exception as schedule_error:
-            # Backward compatibility: older DB may not have substitute_request_id yet.
-            if "substitute_request_id" in str(schedule_error):
-                legacy_entry = {
-                    "teacher_id": accept_data.teacher_id,
-                    "day_of_week": weekday,
-                    "start_time": _time_to_db_string(start_time),
-                    "end_time": _time_to_db_string(end_time),
-                    "subject": schedule_subject,
-                    "classroom": req.get("classroom"),
-                }
+            # Backward compatibility: older DB may miss slot_date/substitute_request_id.
+            legacy_entry = {
+                "teacher_id": accept_data.teacher_id,
+                "day_of_week": weekday,
+                "start_time": _time_to_db_string(start_time),
+                "end_time": _time_to_db_string(end_time),
+                "subject": schedule_subject,
+                "classroom": req.get("classroom"),
+            }
+
+            error_text = str(schedule_error).lower()
+            if "slot_date" in error_text or "substitute_request_id" in error_text:
                 schedule_result = supabase.table("teacher_class_schedules")\
                     .insert(legacy_entry)\
                     .execute()

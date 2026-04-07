@@ -43,6 +43,14 @@ const AcceptedRequestsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/index');
+  };
+
   const fetchRequests = async () => {
     if (!user) return;
     try {
@@ -261,7 +269,7 @@ const AcceptedRequestsScreen = () => {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#374151" />

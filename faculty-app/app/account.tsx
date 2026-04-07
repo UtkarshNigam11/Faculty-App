@@ -23,6 +23,14 @@ const AccountScreen = () => {
   const [hasUploadedSchedule, setHasUploadedSchedule] = useState(false);
   const [scheduleSlotCount, setScheduleSlotCount] = useState(0);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/index');
+  };
+
   useEffect(() => {
     const loadScheduleState = async () => {
       if (!user?.id) {
@@ -120,7 +128,7 @@ const AccountScreen = () => {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />

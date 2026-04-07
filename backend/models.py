@@ -147,6 +147,7 @@ class ClassScheduleItem(BaseModel):
     day_of_week: int  # 0=Monday, 6=Sunday
     start_time: str  # HH:MM:SS format
     end_time: str  # HH:MM:SS format
+    slot_date: Optional[str] = None  # YYYY-MM-DD for one-time substitute entries
     subject: Optional[str] = None
     classroom: Optional[str] = None
     substitute_request_id: Optional[int] = None  # If this schedule is from an accepted substitute request

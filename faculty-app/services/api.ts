@@ -601,6 +601,7 @@ export type ClassScheduleItem = {
   day_of_week: number; // 0 = Monday, 6 = Sunday
   start_time: string; // HH:MM:SS format
   end_time: string; // HH:MM:SS format
+  slot_date?: string | null; // YYYY-MM-DD for one-time substitute classes
   subject?: string | null;
   classroom?: string | null;
   substitute_request_id?: number | null; // If this is from an accepted substitute request

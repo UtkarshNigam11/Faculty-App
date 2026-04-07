@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS teacher_class_schedules (
     day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Monday, 6=Sunday
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
+    slot_date DATE, -- Set only for one-time substitute classes
     subject VARCHAR(120),
     classroom VARCHAR(50),
     source_file VARCHAR(255),
@@ -105,6 +106,7 @@ BEGIN
             day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
             start_time TIME NOT NULL,
             end_time TIME NOT NULL,
+            slot_date DATE,
             subject VARCHAR(120),
             classroom VARCHAR(50),
             source_file VARCHAR(255),
@@ -152,6 +154,24 @@ BEGIN
                    WHERE table_name = 'teacher_class_schedules' AND column_name = 'classroom') THEN
         ALTER TABLE teacher_class_schedules ADD COLUMN classroom VARCHAR(50);
     END IF;
+
+    -- Add slot_date column if it doesn't exist (for one-time substitute classes)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'teacher_class_schedules' AND column_name = 'slot_date') THEN
+        ALTER TABLE teacher_class_schedules ADD COLUMN slot_date DATE;
+    END IF;
+
+    -- Backfill slot_date for existing substitute schedule rows where possible.
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'teacher_class_schedules' AND column_name = 'substitute_request_id')
+       AND EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'teacher_class_schedules' AND column_name = 'slot_date') THEN
+        UPDATE teacher_class_schedules t
+        SET slot_date = r.date
+        FROM substitute_requests r
+        WHERE t.substitute_request_id = r.id
+          AND t.slot_date IS NULL;
+    END IF;
 EXCEPTION
     WHEN others THEN
         -- Ignore errors (column might already be nullable)
@@ -171,6 +191,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_date ON substitute_requests(date);
 CREATE INDEX IF NOT EXISTS idx_teacher_schedule_teacher ON teacher_class_schedules(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_teacher_schedule_day ON teacher_class_schedules(day_of_week);
 CREATE INDEX IF NOT EXISTS idx_teacher_schedule_window ON teacher_class_schedules(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_teacher_schedule_slot_date ON teacher_class_schedules(slot_date);
 
 -- =============================================
 -- ROW LEVEL SECURITY (RLS)

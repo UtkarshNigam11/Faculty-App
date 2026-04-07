@@ -25,6 +25,14 @@ const ViewScheduleScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/account');
+  };
+
   const fetchSchedule = async () => {
     if (!user) return;
 
@@ -130,7 +138,7 @@ const ViewScheduleScreen = () => {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={handleBack}
             activeOpacity={0.7}
           >
             <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
@@ -152,7 +160,7 @@ const ViewScheduleScreen = () => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
@@ -244,10 +252,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)',
     elevation: 2,
   },
   sectionHeaderText: {

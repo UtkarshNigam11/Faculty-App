@@ -45,6 +45,14 @@ const ViewRequestsScreen = () => {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/index');
+  };
+
   const fetchRequests = async () => {
     try {
       const data = await getPendingRequests();
@@ -261,7 +269,7 @@ const ViewRequestsScreen = () => {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#374151" />

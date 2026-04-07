@@ -853,23 +853,45 @@ async def get_class_schedule(
             )
 
         try:
-            schedule_result = supabase.table("teacher_class_schedules")\
-                .select("id, teacher_id, day_of_week, start_time, end_time, subject, classroom, substitute_request_id")\
-                .eq("teacher_id", user_id)\
-                .order("day_of_week", desc=False)\
-                .order("start_time", desc=False)\
-                .execute()
-        except Exception as schedule_error:
-            # Backward compatibility: older DB may not have substitute_request_id yet.
-            if "substitute_request_id" not in str(schedule_error):
-                raise
+            select_variants = [
+                "id, teacher_id, day_of_week, start_time, end_time, slot_date, subject, classroom, substitute_request_id",
+                "id, teacher_id, day_of_week, start_time, end_time, slot_date, subject, classroom",
+                "id, teacher_id, day_of_week, start_time, end_time, subject, classroom, substitute_request_id",
+                "id, teacher_id, day_of_week, start_time, end_time, subject, classroom",
+            ]
 
-            schedule_result = supabase.table("teacher_class_schedules")\
-                .select("id, teacher_id, day_of_week, start_time, end_time, subject, classroom")\
-                .eq("teacher_id", user_id)\
-                .order("day_of_week", desc=False)\
-                .order("start_time", desc=False)\
-                .execute()
+            schedule_result = None
+            last_schedule_error = None
+            for select_fields in select_variants:
+                try:
+                    schedule_result = supabase.table("teacher_class_schedules")\
+                        .select(select_fields)\
+                        .eq("teacher_id", user_id)\
+                        .order("day_of_week", desc=False)\
+                        .order("start_time", desc=False)\
+                        .execute()
+                    break
+                except Exception as schedule_error:
+                    last_schedule_error = schedule_error
+
+            if schedule_result is None:
+                raise last_schedule_error
+        except Exception:
+            raise
+
+        today = datetime.utcnow().date()
+        filtered_items = []
+        for item in (schedule_result.data or []):
+            slot_date_raw = item.get("slot_date")
+            if slot_date_raw:
+                try:
+                    slot_date_value = datetime.strptime(str(slot_date_raw), "%Y-%m-%d").date()
+                    if slot_date_value < today:
+                        continue
+                except ValueError:
+                    # If an unexpected format is encountered, keep the row visible.
+                    pass
+            filtered_items.append(item)
 
         schedules = [
             ClassScheduleItem(
@@ -878,11 +900,12 @@ async def get_class_schedule(
                 day_of_week=item["day_of_week"],
                 start_time=item["start_time"],
                 end_time=item["end_time"],
+                slot_date=item.get("slot_date"),
                 subject=item.get("subject"),
                 classroom=item.get("classroom"),
                 substitute_request_id=item.get("substitute_request_id"),
             )
-            for item in (schedule_result.data or [])
+            for item in filtered_items
         ]
 
         return schedules
