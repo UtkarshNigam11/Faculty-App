@@ -21,6 +21,7 @@ const RegisterScreen = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [department, setDepartment] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
@@ -67,6 +68,7 @@ const RegisterScreen = () => {
         password,
         name: name.trim(),
         phone: normalizedPhone,
+        department: department.trim() || undefined,
       });
       
       Alert.alert(
@@ -158,6 +160,21 @@ const RegisterScreen = () => {
                   value={phone}
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>DEPARTMENT</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="school-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. CSE, ECE, ME"
+                  placeholderTextColor="#9CA3AF"
+                  value={department}
+                  onChangeText={setDepartment}
+                  autoCapitalize="characters"
                 />
               </View>
             </View>
