@@ -68,6 +68,28 @@ async def signup(user: UserCreate):
     """
     supabase = get_supabase()
 
+    # ── Whitelist check ──────────────────────────────────────────────────
+    # Only emails present in the `allowed_emails` table may self-register.
+    try:
+        whitelist_result = (
+            supabase.table("allowed_emails")
+            .select("email")
+            .eq("email", user.email.lower())
+            .execute()
+        )
+        if not whitelist_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your email is not authorized for direct registration. Please contact the admin to get an invite.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # If the table doesn't exist yet or there's a DB error, fail open
+        # so existing deployments aren't broken. Remove this fallback once
+        # the table is created in production.
+        pass
+
     try:
         # Sign up with Supabase Auth - this sends verification email
         auth_response = supabase.auth.sign_up({

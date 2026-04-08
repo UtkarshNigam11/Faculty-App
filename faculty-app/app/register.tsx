@@ -75,7 +75,16 @@ const RegisterScreen = () => {
         [{ text: 'OK', onPress: () => router.replace('/login') }]
       );
     } catch (error: any) {
-      Alert.alert('Registration Failed', error.message || 'Could not create account');
+      const msg = error.message || 'Could not create account';
+      if (msg.toLowerCase().includes('not authorized')) {
+        Alert.alert(
+          'Not Authorized',
+          'Your email is not on the approved faculty list. Please contact the admin to receive a registration invite.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Registration Failed', msg);
+      }
     } finally {
       setIsLoading(false);
     }
