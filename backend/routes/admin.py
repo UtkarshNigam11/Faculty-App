@@ -857,3 +857,152 @@ async def get_departments(current_admin: TokenData = Depends(get_current_admin))
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch departments: {str(e)}"
         )
+
+
+# =============================================
+# ALLOWED EMAILS (REGISTRATION WHITELIST)
+# =============================================
+
+class AllowedEmailCreate(BaseModel):
+    email: str
+    name: Optional[str] = None
+    department: Optional[str] = None
+
+class AllowedEmailUpdate(BaseModel):
+    email: Optional[str] = None
+    name: Optional[str] = None
+    department: Optional[str] = None
+
+class AllowedEmailBulk(BaseModel):
+    emails: List[AllowedEmailCreate]
+
+
+@router.get("/allowed-emails")
+async def get_allowed_emails(current_admin: TokenData = Depends(get_current_admin)):
+    """Get all allowed emails."""
+    supabase = get_supabase()
+    try:
+        result = supabase.table("allowed_emails")\
+            .select("*")\
+            .order("added_at", desc=True)\
+            .execute()
+        return result.data
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch allowed emails: {str(e)}"
+        )
+
+
+@router.post("/allowed-emails", status_code=status.HTTP_201_CREATED)
+async def add_allowed_email(entry: AllowedEmailCreate, current_admin: TokenData = Depends(get_current_admin)):
+    """Add a single email to the whitelist."""
+    supabase = get_supabase()
+    email = entry.email.lower().strip()
+
+    if not email.endswith("@kiit.ac.in"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email must be a valid KIIT email (@kiit.ac.in)"
+        )
+
+    try:
+        # Check duplicate
+        existing = supabase.table("allowed_emails").select("id").eq("email", email).execute()
+        if existing.data:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in allowed list")
+
+        result = supabase.table("allowed_emails").insert({
+            "email": email,
+            "name": entry.name,
+            "department": entry.department,
+        }).execute()
+
+        return result.data[0] if result.data else {"message": "Added"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add allowed email: {str(e)}"
+        )
+
+
+@router.post("/allowed-emails/bulk", status_code=status.HTTP_201_CREATED)
+async def bulk_add_allowed_emails(bulk: AllowedEmailBulk, current_admin: TokenData = Depends(get_current_admin)):
+    """Add multiple emails to the whitelist at once."""
+    supabase = get_supabase()
+    added = 0
+    skipped = 0
+    errors = []
+
+    for entry in bulk.emails:
+        email = entry.email.lower().strip()
+        if not email.endswith("@kiit.ac.in"):
+            errors.append(f"{email}: not a KIIT email")
+            skipped += 1
+            continue
+        try:
+            existing = supabase.table("allowed_emails").select("id").eq("email", email).execute()
+            if existing.data:
+                skipped += 1
+                continue
+            supabase.table("allowed_emails").insert({
+                "email": email,
+                "name": entry.name,
+                "department": entry.department,
+            }).execute()
+            added += 1
+        except Exception as e:
+            errors.append(f"{email}: {str(e)}")
+            skipped += 1
+
+    return {"added": added, "skipped": skipped, "errors": errors}
+
+
+@router.put("/allowed-emails/{email_id}")
+async def update_allowed_email(email_id: int, update: AllowedEmailUpdate, current_admin: TokenData = Depends(get_current_admin)):
+    """Update an allowed email entry."""
+    supabase = get_supabase()
+    update_data = {}
+    if update.email is not None:
+        update_data["email"] = update.email.lower().strip()
+    if update.name is not None:
+        update_data["name"] = update.name
+    if update.department is not None:
+        update_data["department"] = update.department
+
+    if not update_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
+
+    try:
+        result = supabase.table("allowed_emails").update(update_data).eq("id", email_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update: {str(e)}"
+        )
+
+
+@router.delete("/allowed-emails/{email_id}")
+async def delete_allowed_email(email_id: int, current_admin: TokenData = Depends(get_current_admin)):
+    """Remove an email from the whitelist."""
+    supabase = get_supabase()
+    try:
+        result = supabase.table("allowed_emails").delete().eq("id", email_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+        return {"message": "Removed from allowed list"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete: {str(e)}"
+        )

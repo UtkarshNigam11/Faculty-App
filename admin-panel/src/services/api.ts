@@ -444,3 +444,67 @@ export const resendInvite = async (inviteId: number): Promise<{ message: string 
   
   return response.json()
 }
+
+// =============================================
+// ALLOWED EMAILS (REGISTRATION WHITELIST)
+// =============================================
+
+export interface AllowedEmail {
+  id: number
+  email: string
+  name?: string | null
+  department?: string | null
+  added_at?: string
+}
+
+export const getAllowedEmails = async (): Promise<AllowedEmail[]> => {
+  const response = await fetch(`${API_BASE_URL}/admin/allowed-emails`, {
+    headers: getAuthHeaders()
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    throw new Error('Failed to fetch allowed emails')
+  }
+  return response.json()
+}
+
+export const addAllowedEmail = async (data: { email: string; name?: string; department?: string }): Promise<AllowedEmail> => {
+  const response = await fetch(`${API_BASE_URL}/admin/allowed-emails`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    if (response.status === 409) throw new Error('Email already in allowed list')
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to add email')
+  }
+  return response.json()
+}
+
+export const updateAllowedEmail = async (id: number, data: { email?: string; name?: string; department?: string }): Promise<AllowedEmail> => {
+  const response = await fetch(`${API_BASE_URL}/admin/allowed-emails/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to update')
+  }
+  return response.json()
+}
+
+export const deleteAllowedEmail = async (id: number): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/allowed-emails/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Unauthorized - Please login again')
+    throw new Error('Failed to delete')
+  }
+  return response.json()
+}

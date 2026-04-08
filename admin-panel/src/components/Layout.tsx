@@ -8,6 +8,7 @@ import {
   Menu,
   X,
   Shield,
+  ShieldCheck,
   UserCog,
   Bell
 } from 'lucide-react'
@@ -29,6 +30,7 @@ export default function Layout({ children, onLogout, admin }: LayoutProps) {
     { path: '/users', icon: Users, label: 'Users', roles: ['super_admin', 'manager'] },
     { path: '/requests', icon: FileText, label: 'Requests', roles: ['super_admin', 'manager'] },
     { path: '/notifications', icon: Bell, label: 'Notifications', roles: ['super_admin', 'manager'] },
+    { path: '/allowed-emails', icon: ShieldCheck, label: 'Allowed Emails', roles: ['super_admin', 'manager'] },
     { path: '/admins', icon: UserCog, label: 'Admins', roles: ['super_admin'] },
     { path: '/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'manager'] },
   ]

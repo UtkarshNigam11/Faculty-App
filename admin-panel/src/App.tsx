@@ -7,6 +7,7 @@ import Requests from './pages/Requests'
 import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
 import Admins from './pages/Admins'
+import AllowedEmails from './pages/AllowedEmails'
 import Layout from './components/Layout'
 import { type Admin } from './services/api'
 
@@ -71,6 +72,7 @@ function App() {
                   {admin.role === 'super_admin' && (
                     <Route path="/admins" element={<Admins />} />
                   )}
+                  <Route path="/allowed-emails" element={<AllowedEmails />} />
                   <Route path="/settings" element={<Settings admin={admin} />} />
                 </Routes>
               </Layout>
