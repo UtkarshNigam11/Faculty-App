@@ -880,7 +880,10 @@ class AllowedEmailBulk(BaseModel):
 @router.get("/allowed-emails")
 async def get_allowed_emails(current_admin: TokenData = Depends(get_current_admin)):
     """Get all allowed emails."""
-    supabase = get_supabase()
+    try:
+        supabase = get_supabase_admin()
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     try:
         result = supabase.table("allowed_emails")\
             .select("*")\
@@ -897,7 +900,10 @@ async def get_allowed_emails(current_admin: TokenData = Depends(get_current_admi
 @router.post("/allowed-emails", status_code=status.HTTP_201_CREATED)
 async def add_allowed_email(entry: AllowedEmailCreate, current_admin: TokenData = Depends(get_current_admin)):
     """Add a single email to the whitelist."""
-    supabase = get_supabase()
+    try:
+        supabase = get_supabase_admin()
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     email = entry.email.lower().strip()
 
     if not email.endswith("@kiit.ac.in"):
@@ -932,7 +938,10 @@ async def add_allowed_email(entry: AllowedEmailCreate, current_admin: TokenData 
 @router.post("/allowed-emails/bulk", status_code=status.HTTP_201_CREATED)
 async def bulk_add_allowed_emails(bulk: AllowedEmailBulk, current_admin: TokenData = Depends(get_current_admin)):
     """Add multiple emails to the whitelist at once."""
-    supabase = get_supabase()
+    try:
+        supabase = get_supabase_admin()
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     added = 0
     skipped = 0
     errors = []
@@ -964,7 +973,10 @@ async def bulk_add_allowed_emails(bulk: AllowedEmailBulk, current_admin: TokenDa
 @router.put("/allowed-emails/{email_id}")
 async def update_allowed_email(email_id: int, update: AllowedEmailUpdate, current_admin: TokenData = Depends(get_current_admin)):
     """Update an allowed email entry."""
-    supabase = get_supabase()
+    try:
+        supabase = get_supabase_admin()
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     update_data = {}
     if update.email is not None:
         update_data["email"] = update.email.lower().strip()
@@ -993,7 +1005,10 @@ async def update_allowed_email(email_id: int, update: AllowedEmailUpdate, curren
 @router.delete("/allowed-emails/{email_id}")
 async def delete_allowed_email(email_id: int, current_admin: TokenData = Depends(get_current_admin)):
     """Remove an email from the whitelist."""
-    supabase = get_supabase()
+    try:
+        supabase = get_supabase_admin()
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     try:
         result = supabase.table("allowed_emails").delete().eq("id", email_id).execute()
         if not result.data:
