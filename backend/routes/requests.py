@@ -119,10 +119,20 @@ def _request_location(request: dict) -> str:
     return request.get("classroom") or "TBD"
 
 
+def _format_date_indian(date_str: str) -> str:
+    if not date_str:
+        return ""
+    try:
+        return datetime.strptime(str(date_str), "%Y-%m-%d").strftime("%d/%m/%y")
+    except ValueError:
+        return str(date_str)
+
+
 def _request_summary(request: dict) -> str:
+    formatted_date = _format_date_indian(request.get('date'))
     if request.get("request_type") == "exam":
-        return f"exam duty at {_request_location(request)} on {request['date']} at {request['time']}"
-    return f"{_request_title(request)} in {_request_location(request)} on {request['date']} at {request['time']}"
+        return f"exam duty at {_request_location(request)} on {formatted_date} at {request.get('time')}"
+    return f"{_request_title(request)} in {_request_location(request)} on {formatted_date} at {request.get('time')}"
 
 
 def _build_response(req: dict, teacher: dict | None = None, acceptor: dict | None = None):

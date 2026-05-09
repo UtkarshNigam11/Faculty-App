@@ -34,6 +34,17 @@ A mobile application for KIIT University faculty members to request and manage s
 | **Authentication** | Supabase Auth with email verification |
 | **Navigation** | Expo Router v6 |
 
+## 🏗️ System Architecture (Proper Design)
+
+Formal architecture artifacts are available in [docs/architecture/system-design.md](docs/architecture/system-design.md).
+
+![Faculty Substitute System Architecture](docs/architecture/system-design.svg)
+
+Downloadable files:
+- [SVG Diagram](docs/architecture/system-design.svg)
+- [PNG Diagram](docs/architecture/system-design.png)
+- [Mermaid Source](docs/architecture/system-design.mmd)
+
 ## 📂 Project Structure
 
 ```
